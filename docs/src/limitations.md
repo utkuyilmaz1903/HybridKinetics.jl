@@ -100,6 +100,24 @@ destruction term. This page collects every caveat in one place.
 - A multi-seed robustness study of the full protocol is not implemented.
   `benchmark/recovery_seeds.jl --ude` runs the protocol on five seeds as a
   report; the continuous-integration check uses seeds 103 and 104.
+- How much one run varies is measured (0.18 study, benchmarks page). Over ten
+  random initialisations of the neural term on the same data, five seeds and
+  fifty runs, the discovered support is the same every time, while the final
+  training loss spans a factor of 6 to 90 within a seed and the learned-rate
+  error runs from 0.022 to 0.084. One run's loss is one draw from that
+  spread. The warm-up length matters less than the draw: the package's
+  length, twice it and none at all differ by less than the spread between
+  initialisations, although dropping the warm-up entirely is the only setting
+  in which two seeds disagree about the support.
+- The hybrid model built from the discovered rate resimulated in all 15 runs
+  of the reference protocol at noise 0, 0.02 and 0.05, and in all 60 runs of
+  the four-state fixture's default sample design at 0.05. The runs that do
+  not resimulate, in the stored studies, belong to the constant sample design
+  at 0.05 noise, which has not been the default since 0.12. Their candidates
+  have a denominator identically 1, so the denominator-safety check cannot
+  flag them and no candidate-only check was added: the quantity that does
+  separate them, a rate that turns negative outside the sampled range, also
+  flags 75 of 232 runs that resimulated without trouble.
 
 ## Extensions and integrations
 

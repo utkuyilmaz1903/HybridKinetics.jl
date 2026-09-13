@@ -891,6 +891,129 @@ Environment: Julia 1.10.12, OrdinaryDiffEq 7.8.1, SciMLSensitivity 7.119.3,
 Lux 1.31.4, Optimization 5.9.0, Zygote 0.7.13, SciMLBase 3.51.0,
 HybridKinetics 0.18.0, four cores, 2026-09-13.
 
+### How much one run varies
+
+Three questions a user should be able to answer about a single run: whether
+the answer depends on the random initialisation, whether the hybrid model
+resimulates, and whether the warm-up length is a good default. All are
+measured on the two-state reference protocol with the data seed and the
+initialisation seed separated, which the package's own path ties together;
+`reliability_matches_package` checks that the separated path reproduces
+`fit_unknown_destruction` exactly at the package's warm-up, and the learned
+rates agree to the last bit.
+
+**The random initialisation.** Ten initialisations of the neural term on the
+same data, five seeds, 50 runs.
+
+| seed | runs | final loss median | loss spread within the seed | learned-rate error median | error range | distinct supports |
+|---|---|---|---|---|---|---|
+| 103 | 10 | 2.52e-6 | x6 | 0.044 | 0.036 to 0.052 | 1 |
+| 107 | 10 | 2.57e-6 | x6 | 0.040 | 0.031 to 0.051 | 1 |
+| 111 | 10 | 3.14e-6 | x11 | 0.042 | 0.034 to 0.065 | 1 |
+| 113 | 10 | 2.25e-6 | x11 | 0.039 | 0.033 to 0.084 | 1 |
+| 127 | 10 | 2.74e-6 | x90 | 0.043 | 0.022 to 0.075 | 1 |
+
+All 50 runs recover the same support, `1`, `R`, `R^2` in the numerator and
+`R`, `R^2` in the denominator, so the pre-registered confirmation — one
+support in at least 9 of 10 for every seed — holds at 10 of 10 for all five.
+What moves is the numbers: the final training loss spans a factor of 6 to 90
+within a seed and the learned-rate error runs from 0.022 to 0.084 across the
+50 runs. One run's loss is one draw from that spread and should not be read
+as a property of the data.
+
+**Where the divergences are, and what predicts them.** Some runs of the
+stored studies produce a hybrid model that cannot be resimulated: the
+discovered rate is put back into the network and the solver fails, leaving a
+non-finite residual. The pre-registered explanation was that the discovered
+denominator has a root inside or near the range the resimulation visits, and
+that a check on the candidate alone would predict it. The measurement
+covered the stored rows and new ones.
+
+The reference protocol produced nothing to audit: 15 runs, five seeds at
+noise 0, 0.02 and 0.05, none diverged, with denominator minima between 0.949
+and 1.013 and held-out residuals from 0.002 to 0.054. The stored rows name
+where the divergences are instead — the four-state fixture on the **constant**
+sample design, which holds `S` at 0.4 on every sample and stopped being the
+default in 0.12. Retraining those cells reproduces them exactly: the same
+four seed-library-variant cells, the same extra terms, the same non-finite
+residuals.
+
+| design | noise | runs | diverged | no candidate |
+|---|---|---|---|---|
+| constant | 0.0 | 60 | 0 | 0 |
+| constant | 0.02 | 60 | 0 | 0 |
+| constant | 0.05 | 60 | 4 | 2 |
+| varying (the default since 0.12) | 0.05 | 60 | 0 | 2 |
+
+Every candidate that diverged has a denominator identically 1 — the sparse
+fit kept no denominator term at all — so its minimum is 1.0 on the samples,
+on their bounding box and on the box widened past the observed range. No
+threshold on the denominator can flag them.
+
+| check on the candidate alone | catches | flags runs that were fine |
+|---|---|---|
+| denominator below 0.1 on the sample box | 0 of 4 | 47 of 232 |
+| denominator below 0.5 on the sample box | 0 of 4 | 48 of 232 |
+| denominator negative on the sample box | 0 of 4 | 46 of 232 |
+| denominator below 0.1 on the widened box | 0 of 4 | 50 of 232 |
+| denominator sign change on the sample box | 0 of 4 | 46 of 232 |
+| denominator sign change on the widened box | 0 of 4 | 49 of 232 |
+| rate goes negative on the sample box | 1 of 4 | 82 of 232 |
+| rate goes negative on the widened box | 4 of 4 | 75 of 232 |
+
+The pre-registered confirmation asked for at least 80 per cent of the
+historical divergences with no false alarms. Every denominator-based check
+catches none of them and warns about forty-six to fifty of the two hundred and thirty-two runs
+that resimulated without trouble, so the hypothesis is **refuted**. The same grids do show
+what the diverging candidates have in common: the discovered rate turns
+negative outside the range it was fitted on, which makes the destruction
+term a source and the state grow without bound. That catches all four, but it
+also flags seventy-five runs that were fine — one of them a candidate whose rate
+reaches -2.4e5 on the widened grid and still resimulates, because the
+trajectory never goes there. It is therefore not a check that could be added
+to the existing denominator-safety guard, and none is added.
+
+**The warm-up length.** The warm-up is a short Adam pass on the first
+experiment whose optimizer state the joint fit then reuses. It was run at
+zero, at the package's length and at twice it, with all observations and with
+every second observation of the regulator hidden — the sparsely observed
+species of the p53 case study.
+
+| observations | warm-up | runs | final loss median | learned-rate error median | error range | distinct supports | diverged |
+|---|---|---|---|---|---|---|---|
+| all | none | 5 | 4.13e-6 | 0.050 | 0.041 to 0.091 | 2 | 0 |
+| all | the package's length | 5 | 3.86e-6 | 0.046 | 0.038 to 0.049 | 1 | 0 |
+| all | twice it | 5 | 2.49e-6 | 0.043 | 0.034 to 0.059 | 1 | 0 |
+| every second regulator value hidden | none | 5 | 4.45e-6 | 0.040 | 0.039 to 0.046 | 2 | 0 |
+| every second regulator value hidden | the package's length | 5 | 3.85e-6 | 0.039 | 0.036 to 0.043 | 1 | 0 |
+| every second regulator value hidden | twice it | 5 | 2.39e-6 | 0.040 | 0.037 to 0.077 | 1 | 0 |
+
+The pre-registered confirmation asked that the package's length be within
+noise of the better of the other two on both fixtures, and it is: on fully
+observed data the best median is 0.043 at twice the length against 0.046 at
+the package's, and with observations hidden the package's length is itself
+the best at 0.039. Both gaps are far smaller than the 0.022-to-0.084 spread
+that ten initialisations of the same data produce, so the warm-up length
+matters less than which random initialisation a run happens to draw.
+**Confirmed.** Dropping the warm-up entirely is the only setting that changes
+anything visible: the rate error rises to a median 0.050 on fully observed
+data with one run at 0.091, and one seed's discovery drops the linear
+numerator term, which happens to score a better F1 of 0.667. Thirty runs, none
+diverged.
+
+**A reliability section in the printed report** was left out. It was
+conditional on these three measurements producing a number a user should see
+before trusting a run, and they do not: the initialisation spread is a
+property of ten runs rather than of the one a user has, the warm-up length is
+a configuration value and not a per-run measurement, and the one per-run
+quantity that was a candidate — the discovered denominator's minimum, which
+the report already computes — is shown above not to predict the failure it
+would be reported for.
+
+Environment: Julia 1.10.12, OrdinaryDiffEq 7.8.1, SciMLSensitivity 7.119.3,
+Lux 1.31.4, Optimization 5.9.0, Zygote 0.7.13, SciMLBase 3.51.0,
+HybridKinetics 0.18.0, four cores, 2026-09-13.
+
 ## Report fields
 
 | Field | Meaning |
