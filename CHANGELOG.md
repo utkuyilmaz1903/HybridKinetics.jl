@@ -12,6 +12,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Nothing yet.
 
+## [0.19.0] - 2026-09-13
+
+A measurement release aimed at one target: 0.18 showed that a substantially
+better solution exists and training does not reach it. 0.19 measured how far
+away it is, why, and what closes the distance. One option is added, off by
+default; no default, threshold or public function changes, and the 0.15
+fingerprint suite reproduces exactly.
+
+### Added
+
+- `restarts` on `TrainingConfig`: fit that many random initialisations of the
+  neural term and keep the one reaching the lowest final loss, with every
+  attempt's loss in the result's metadata. Defaults to 1, and restart one is
+  the fit the package would have done on its own, so the option is a strict
+  superset of today's behaviour. Not a default; the evidence for and against
+  making it one is on the benchmarks page.
+- `src/OptimisationGapStudy.jl`: a two-state reference training whose starting
+  point and iteration budget the caller controls, the reference discovery run
+  on a rate the caller supplies, the training loss at an arbitrary parameter
+  vector, the loss along the straight line between two solutions, and a
+  destruction rate estimated from the data alone.
+- A "Closing the optimisation gap" section on the benchmarks page with the
+  floor, the ceiling and what each approach recovers of the distance between
+  them, including the approaches that recover nothing; matching paragraphs on
+  the limitations page and in the README.
+
+### Changed
+
+- Nothing in the shipped path. The support F1 stays at 0.571, every threshold
+  and seed is untouched, and the discovery code was not modified at all.
+
+### Measured, and not adopted
+
+- A curvature penalty on the learned rate was not built: smoothing a rate a
+  training already produced leaves the discovered support unchanged in all
+  thirty runs measured and makes the rate worse, so there is no roughness for
+  a penalty to act on.
+- Pre-training the network to the scale of a data-estimated rate, with none of
+  its shape, changes nothing — as the parameter-space measurement predicted.
+
 ## [0.18.0] - 2026-09-13
 
 A measurement release. Nothing in the package's behaviour changes: no default
@@ -730,7 +770,8 @@ thresholds, seeds, protocol settings, library construction) is unchanged.
 - `predict_ude` routes through `SciMLBase.ODEProblem` for both AD policies.
 - `RunMetadata` defaults to `BioDynaX.PACKAGE_VERSION`.
 
-[Unreleased]: https://github.com/utkuyilmaz1903/HybridKinetics.jl/compare/v0.18.0...HEAD
+[Unreleased]: https://github.com/utkuyilmaz1903/HybridKinetics.jl/compare/v0.19.0...HEAD
+[0.19.0]: https://github.com/utkuyilmaz1903/HybridKinetics.jl/compare/v0.18.0...v0.19.0
 [0.18.0]: https://github.com/utkuyilmaz1903/HybridKinetics.jl/compare/v0.17.2...v0.18.0
 [0.17.2]: https://github.com/utkuyilmaz1903/HybridKinetics.jl/compare/v0.17.1...v0.17.2
 [0.17.1]: https://github.com/utkuyilmaz1903/HybridKinetics.jl/compare/v0.17.0...v0.17.1

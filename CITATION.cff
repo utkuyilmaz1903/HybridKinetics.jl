@@ -11,7 +11,7 @@ authors:
 license: MIT
 repository-code: https://github.com/utkuyilmaz1903/HybridKinetics.jl
 url: https://utkuyilmaz1903.github.io/HybridKinetics.jl/dev/
-version: 0.18.0
+version: 0.19.0
 date-released: "2026-09-13"
 keywords:
   - julia
