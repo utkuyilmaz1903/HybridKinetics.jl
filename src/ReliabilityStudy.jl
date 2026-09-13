@@ -104,7 +104,7 @@ function reliability_discovery(trained)
     result = regress_unknown_rate(R, dummy_trained_graph_local_times(size(R, 2)),
         Matrix(trained.D); config = rate_discovery_config(), verbose = false)
     truth = _library_study_truth(trained.truth, rows)
-    scores = library_study_scores(result; truth, names = [:S, :R])
+    scores = library_study_scores(result, truth; names = [:S, :R])
     candidate = scores.candidate
     support = candidate === nothing ? "" :
               _reliability_support_label(candidate)
