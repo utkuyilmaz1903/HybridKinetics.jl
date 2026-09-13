@@ -508,6 +508,9 @@ function read_adjacent_csv(path::AbstractString)
     return rows
 end
 
+"""The median, or `NaN` when the sequential setting recorded no value."""
+_adjacent_median_or_nan(values) = isempty(values) ? NaN : median(values)
+
 """
 The bias per setting and node. The pre-registered criteria are read against
 the joint fit's bias for the same node: returning to within 5 percentage
@@ -535,10 +538,9 @@ function adjacent_summary(rows)
                 median_rate_rmse = median([r.nn_rate_rmse
                                            for r in group
                                            if isfinite(r.nn_rate_rmse)]),
-                median_cross_term = median(
+                median_cross_term = _adjacent_median_or_nan(
                     [r.cross_term_max for r in group
-                     if isfinite(r.cross_term_max)];
-                    init = NaN),
+                     if isfinite(r.cross_term_max)]),
                 n_under_5pc = count(b -> abs(b) < 0.05, biases)))
     end
     return out
@@ -563,15 +565,30 @@ function format_adjacent_summary(rows)
     baselines = Dict(row.node => row.median_bias
     for row in summary if row.setting == "joint")
     isempty(baselines) && return String(take!(io))
-    println(io, "\nagainst the joint fit, per node:")
+    # Which node carries the bias is an empirical question here: the coupled
+    # fixture's graph is symmetric, so the joint fit names the biased node
+    # rather than the topology.
+    biased = argmax(node -> abs(baselines[node]), collect(keys(baselines)))
+    println(io, "\nthe node the joint fit leaves biased: $(biased) at ",
+        round(baselines[biased]; digits = 3))
+    println(io, "against the joint fit, per node:")
     for row in summary
         row.setting == "joint" && continue
         haskey(baselines, row.node) || continue
         baseline = baselines[row.node]
-        verdict = abs(row.median_bias - baseline) ≤ 0.05 ?
-                  "the bias returns: a property of the data" :
-                  abs(row.median_bias) ≤ abs(baseline) / 3 ?
-                  "the bias mostly goes: the search, not the data" : "in between"
+        verdict = if row.setting == "true_init"
+            # 2.1 asks what the bias is, not whether it is gone.
+            abs(row.median_bias - baseline) ≤ 0.05 ?
+            "unchanged: the bias is a property of the data" :
+            abs(row.median_bias) ≤ abs(baseline) / 3 ?
+            "under a third of it: the bias is a property of the search" :
+            "in between: neither branch"
+        else
+            # 2.2 to 2.4 ask whether the correction removes it.
+            abs(row.median_bias) < 0.05 ? "median bias under 5%: the correction holds" :
+            abs(row.median_bias) < abs(baseline) ? "smaller but still over 5%" :
+            "no smaller than the joint fit"
+        end
         println(io, "  $(row.setting), $(row.node): ", round(row.median_bias; digits = 3),
             " against ", round(baseline; digits = 3), "  -> ", verdict)
     end

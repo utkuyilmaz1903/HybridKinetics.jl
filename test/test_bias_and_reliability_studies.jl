@@ -207,3 +207,25 @@ end
     @test all(isfinite, ComponentArrays.getdata(gradient))
     @test sqrt(sum(abs2, ComponentArrays.getdata(gradient))) > 0
 end
+
+@testset "the adjacency summary reads its own criteria" begin
+    # The sequential setting records no cross-term value, so the summary has
+    # to survive an empty column; and the two pre-registered criteria are
+    # different questions, so one verdict must not stand in for the other.
+    row = (; fixture = :coupled, seed = 103, noise = 0.0, setting = "joint",
+        node = "B", role = "regulated by the other unknown", nn_rate_bias = -0.20,
+        nn_rate_rmse = 0.16, final_loss = 1.0e-4, collinearity = 0.999,
+        cross_term_max = 0.96, data_residual = NaN, holdout_residual = NaN,
+        train_time_s = 1.0, note = "")
+    rows = [row,
+        (; row..., setting = "true_init", nn_rate_bias = -0.03, cross_term_max = 0.96),
+        (; row..., setting = "sequential", nn_rate_bias = -0.19, cross_term_max = NaN)]
+    text = HybridKinetics.format_adjacent_summary(rows)
+    @test occursin("the node the joint fit leaves biased: B", text)
+    @test occursin("a property of the search", text)
+    @test occursin("no smaller than the joint fit", text)
+    # The empty cross-term column prints as NA rather than stopping the summary.
+    @test occursin("| NA |", text)
+    summary = HybridKinetics.adjacent_summary(rows)
+    @test isnan(only(s for s in summary if s.setting == "sequential").median_cross_term)
+end
