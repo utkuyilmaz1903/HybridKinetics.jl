@@ -134,7 +134,22 @@ destruction term. This page collects every caveat in one place.
   `CROSS_TERM_COLLINEARITY_THRESHOLD` = 0.46, the value below which no run
   of the study showed a measurable cost; it is local to the fit,
   concerns the scales only, does not say which of the two terms drifted,
-  and is not a structural result.
+  and is not a structural result. The 0.18 study asked what that bias is:
+  pre-training both terms to their true rates and then fitting with the
+  normal settings leaves the biased term at under a fifth of its usual bias
+  in 5 of 5 seeds, at about a tenth of the final training loss, so the data
+  support a fit within 1 per cent of the truth on the median and 5 per cent
+  at worst, and the joint search does not find it. That
+  is a diagnosis and not a remedy — a user has no true rates — and the three
+  corrections that were measured do not help: weighting each node's residual
+  by its observed variance makes the bias larger, fitting one term first and
+  freezing it moves the bias onto whichever term is fitted second in either
+  ordering, and the residual surface over the two rates' scales shows their
+  ratio about six times better determined than their common scale, so a
+  constraint on the product would act where the data are already
+  informative. The 15 to 30 per cent figure therefore stands as the measured
+  cost, now known to be a property of the optimiser's path rather than a
+  limit of the data (0.18 study, benchmarks page).
 - The number of terms is not limited by the code. Two terms were measured
   in full; the three-term fixture ran at noise 0.0 only (its noisy cells
   were dropped at the study's budget). There, the adjacent pair came out
