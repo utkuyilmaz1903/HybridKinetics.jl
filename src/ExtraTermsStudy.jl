@@ -617,3 +617,180 @@ function extra_terms_study(; fixtures = EXTRA_TERMS_FIXTURES,
     end
     return out
 end
+
+# -- Summaries -----------------------------------------------------------------
+# Each helper answers one of the milestone's pre-registered criteria directly,
+# so that the verdict of a hypothesis is read off the rows rather than argued.
+
+_extra_terms_cells(rows) = unique((r.fixture, r.seed, r.noise) for r in rows)
+
+"""
+`:ablation` verdict. For every run and every removed extra term: the factor by
+which the training residual against the learned rate grows, and the change in
+the error against the true rate. The pre-registered confirmation is a residual
+growth of at least ten times with the true-rate error unchanged or improved
+(within 5 per cent).
+"""
+function extra_terms_ablation_summary(rows)
+    out = NamedTuple[]
+    for cell in _extra_terms_cells(rows)
+        cell_rows = [r
+                     for r in rows
+                     if (r.fixture, r.seed, r.noise) == cell &&
+                        r.hypothesis == "ablation"]
+        base = findfirst(r -> r.setting == "full", cell_rows)
+        base === nothing && continue
+        full = cell_rows[base]
+        for row in cell_rows
+            row.setting == "full" && continue
+            is_extra = row.note == "an extra term"
+            residual_factor = full.rss_train > 0 ? row.rss_train / full.rss_train : Inf
+            true_ratio = full.rate_rmse_true > 0 ?
+                         row.rate_rmse_true / full.rate_rmse_true : Inf
+            push!(out,
+                (; fixture = cell[1], seed = cell[2], noise = cell[3],
+                    term = row.setting, is_extra, residual_factor, true_ratio,
+                    holdout_ratio = full.holdout_residual > 0 ?
+                                    row.holdout_residual / full.holdout_residual : NaN,
+                    confirms = is_extra && residual_factor ≥ 10 && true_ratio ≤ 1.05))
+        end
+    end
+    return out
+end
+
+"""
+`:selection` verdict. For each run and each selection rule, whether the rule
+recovered the true support exactly (F1 = 1.0) while keeping recall 1.0.
+"""
+function extra_terms_selection_summary(rows)
+    out = NamedTuple[]
+    for cell in _extra_terms_cells(rows)
+        for rule in ("AIC", "BIC", "knee")
+            row = findfirst(
+                r -> (r.fixture, r.seed, r.noise) == cell &&
+                         r.hypothesis == "selection" &&
+                         r.setting == "select $(rule)",
+                rows)
+            row === nothing && continue
+            selected = rows[row]
+            push!(out,
+                (; fixture = cell[1], seed = cell[2], noise = cell[3], rule,
+                    selected.n_terms, selected.support_f1, selected.support_recall,
+                    selected.extras, selected.rate_rmse_true,
+                    confirms = selected.support_f1 ≈ 1.0 && selected.support_recall ≈ 1.0))
+        end
+    end
+    return out
+end
+
+"""
+`:split` verdict. The (numerator, denominator) threshold pairs that recover the
+true support, counted over runs; a pair only counts as a rule if it is the same
+pair across fixtures and noise levels.
+"""
+function extra_terms_split_summary(rows)
+    hits = Dict{String, Vector{Tuple{String, Int, Float64}}}()
+    cells = _extra_terms_cells(rows)
+    for row in rows
+        row.hypothesis == "split" || continue
+        (row.support_f1 ≈ 1.0 && row.support_recall ≈ 1.0) || continue
+        push!(get!(hits, row.setting, Tuple{String, Int, Float64}[]),
+            (row.fixture, row.seed, row.noise))
+    end
+    out = NamedTuple[]
+    for (setting, cells_hit) in hits
+        fixtures = unique(first.(cells_hit))
+        push!(out,
+            (; setting, n_hits = length(cells_hit), n_cells = length(cells),
+                fixtures = join(sort(fixtures), "+"),
+                confirms = length(cells_hit) ≥ 14 && length(fixtures) ≥ 2))
+    end
+    sort!(out; by = r -> -r.n_hits)
+    return out
+end
+
+"""`:derivative` verdict: recovery of the true support per threshold."""
+function extra_terms_derivative_summary(rows)
+    out = NamedTuple[]
+    settings = unique(r.setting for r in rows if r.hypothesis == "derivative")
+    cells = _extra_terms_cells(rows)
+    for setting in settings
+        matching = [r for r in rows if r.hypothesis == "derivative" && r.setting == setting]
+        recovered = count(r -> r.support_f1 ≈ 1.0 && r.support_recall ≈ 1.0, matching)
+        full_recall = count(r -> r.support_recall ≈ 1.0, matching)
+        push!(out,
+            (; setting, n = length(matching), recovered, full_recall,
+                median_f1 = isempty(matching) ? NaN :
+                            median([r.support_f1 for r in matching]),
+                confirms = recovered ≥ 12))
+    end
+    return out
+end
+
+"""One printable block per hypothesis, read straight off the rows."""
+function format_extra_terms_summary(rows)
+    isempty(rows) && return "no rows"
+    io = IOBuffer()
+    cells = _extra_terms_cells(rows)
+    println(io, "cells: $(length(cells)) (fixture, seed, noise)")
+    ablation = extra_terms_ablation_summary(rows)
+    extras_only = [a for a in ablation if a.is_extra]
+    true_only = [a for a in ablation if !a.is_extra]
+    println(io, "\n--- ablation: what removing one term costs ---")
+    println(io,
+        "| term kind | n | median residual growth | median true-rate error ratio | median held-out ratio |")
+    println(io, "|---|---|---|---|---|")
+    for (label, group) in (("extra", extras_only), ("true", true_only))
+        isempty(group) && continue
+        finite = [g for g in group if isfinite(g.residual_factor)]
+        println(io, "| $(label) | $(length(group)) | ",
+            isempty(finite) ? "NA" :
+            string(round(median([g.residual_factor for g in finite]); sigdigits = 3)), " | ",
+            string(round(median([g.true_ratio for g in group if isfinite(g.true_ratio)]);
+                digits = 3)), " | ",
+            string(round(
+                median([g.holdout_ratio for g in group if isfinite(g.holdout_ratio)]);
+                digits = 3)), " |")
+    end
+    println(io,
+        "pre-registered confirmation (extra term, residual x10 or more, true-rate error within 5%): ",
+        count(a -> a.confirms, extras_only), " of ", length(extras_only), " removals")
+    println(io, "\n--- selection: AIC, BIC, knee ---")
+    println(io, "| rule | recovers the true support | median terms kept |")
+    println(io, "|---|---|---|")
+    selection = extra_terms_selection_summary(rows)
+    for rule in ("AIC", "BIC", "knee")
+        group = [s for s in selection if s.rule == rule]
+        isempty(group) && continue
+        println(io, "| $(rule) | $(count(s -> s.confirms, group)) of $(length(group)) | ",
+            median([s.n_terms for s in group]), " |")
+    end
+    println(io, "\n--- split thresholds: pairs that recover the true support ---")
+    split = extra_terms_split_summary(rows)
+    if isempty(split)
+        println(
+            io, "no (numerator, denominator) pair recovered the true support in any run")
+    else
+        println(io, "| pair | runs recovered | of | fixtures |")
+        println(io, "|---|---|---|---|")
+        for row in first(split, 5)
+            println(
+                io, "| $(row.setting) | $(row.n_hits) | $(row.n_cells) | $(row.fixtures) |")
+        end
+    end
+    println(io, "\n--- derivative rows ---")
+    derivative = extra_terms_derivative_summary(rows)
+    if isempty(derivative)
+        println(io, "not run")
+    else
+        println(io,
+            "| setting | runs | recover the true support | keep recall 1.0 | median F1 |")
+        println(io, "|---|---|---|---|---|")
+        for row in derivative
+            println(io,
+                "| $(row.setting) | $(row.n) | $(row.recovered) | $(row.full_recall) | ",
+                round(row.median_f1; digits = 3), " |")
+        end
+    end
+    return String(take!(io))
+end
