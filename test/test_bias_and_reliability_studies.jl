@@ -124,13 +124,16 @@ end
     rows = [
         (; success = true, diverged = true, denominator_min_box = 0.05,
             denominator_min_extended = -0.2, sign_change_box = false,
-            sign_change_extended = true, negative_rate_box = false),
+            sign_change_extended = true, negative_rate_box = false,
+            negative_rate_extended = true),
         (; success = true, diverged = false, denominator_min_box = 0.9,
             denominator_min_extended = 0.8, sign_change_box = false,
-            sign_change_extended = false, negative_rate_box = false),
+            sign_change_extended = false, negative_rate_box = false,
+            negative_rate_extended = false),
         (; success = false, diverged = false, denominator_min_box = NaN,
             denominator_min_extended = NaN, sign_change_box = false,
-            sign_change_extended = false, negative_rate_box = false)]
+            sign_change_extended = false, negative_rate_box = false,
+            negative_rate_extended = false)]
     checks = HybridKinetics.reliability_audit_summary(rows)
     @test first(checks).caught == 1
     for check in checks[2:end]
