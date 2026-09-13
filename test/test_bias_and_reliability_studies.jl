@@ -224,11 +224,17 @@ end
         train_time_s = 1.0, note = "")
     rows = [row,
         (; row..., setting = "true_init", nn_rate_bias = -0.03, cross_term_max = 0.96),
+        (; row..., setting = "weighted", nn_rate_bias = -0.25, cross_term_max = 0.96),
         (; row..., setting = "sequential", nn_rate_bias = -0.19, cross_term_max = NaN)]
     text = HybridKinetics.format_adjacent_summary(rows)
     @test occursin("the node the joint fit leaves biased: B", text)
     @test occursin("a property of the search", text)
-    @test occursin("no smaller than the joint fit", text)
+    # A correction that leaves the bias larger, and one that shrinks it without
+    # reaching the criterion, must read differently.
+    @test occursin("weighted, B: -0.25 against -0.2  -> no smaller than the joint fit",
+        text)
+    @test occursin("sequential, B: -0.19 against -0.2  -> smaller but still over 5%",
+        text)
     # The empty cross-term column prints as NA rather than stopping the summary.
     @test occursin("| NA |", text)
     summary = HybridKinetics.adjacent_summary(rows)

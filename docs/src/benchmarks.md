@@ -787,6 +787,77 @@ three-term rows came in, the two-term fixtures alone would have put the
 threshold at 0.69, the midpoint of their gap; the three-term fixture showed
 a measurable cost below that, which is why the lower value is used.
 
+### Where the adjacent-node bias comes from
+
+Two unknown terms on adjacent nodes leave one term's learned rate biased low
+(above, median 16 per cent in 5 of 5 seeds). The 0.18 milestone asked whether
+that is a property of the data or of the search, and then measured three
+corrections, each with its criterion written down before the run. Every row
+below is one unknown term of one training of the coupled fixture at noise 0,
+seeds 103, 107, 111, 113 and 127, scored exactly as the 0.16 study scores it:
+the signed relative bias is the mean of `(learned - true) / true` over the
+regulator grid.
+
+**Which term is downstream cannot be read off the graph.** In the coupled
+fixture each unknown node regulates the other's term, so the topology is
+symmetric; what breaks the symmetry is the parameters, which a user does not
+have for an unknown term. The study reports both terms as "regulated by the
+other unknown", `adjacent_ordering_is_graph_readable` returns false, and the
+sequential experiment below is run in both orderings rather than assuming
+one. Node B is named here as the node the joint fit leaves biased, which is
+an observation about these runs, not something a user could predict.
+
+**Optimisation, not identifiability.** Both neural terms were pre-trained to
+their true rates on the sampling grid and then trained with the normal joint
+settings.
+
+| setting | node A bias | node B bias | node A rate error | node B rate error | final loss |
+|---|---|---|---|---|---|
+| joint, the package's own path | -0.014 | -0.160 | 0.138 | 0.164 | 1.0e-4 |
+| started at the true rates | +0.008 | +0.008 | 0.013 | 0.032 | 1.1e-5 |
+
+Medians over the five seeds; the cross-term collinearity is 0.96 in every run
+of both settings. The two pre-registered criteria were: the bias returns to
+within 5 percentage points of the joint bias in at least 4 of 5 seeds
+(a property of the data), or it stays under a third of it in at least 4 of 5
+seeds (a property of the search). Node B's bias is 0.19, 0.02, 0.16, 0.05 and
+0.09 of its joint value, so **5 of 5 seeds meet the second criterion and 0 of
+5 meet the first**. The joint fit also stops at about ten times the final
+training loss reached from the true rates. The data support a nearly unbiased
+fit of both terms; the joint search does not find it. Starting from the true
+rates is not something a user can do, so this is a diagnosis and not a
+remedy.
+
+**Sequential training.** The pre-registered procedure trains one term with
+the other node's mechanism known at its true values, freezes the rate it
+learned, and trains the remaining term against it. Both orderings were run.
+
+| trained first | node | role | bias median | bias range | runs under 5% |
+|---|---|---|---|---|---|
+| A | A | trained first, then frozen | +0.096 | [-0.012, +0.198] | 2 of 5 |
+| A | B | trained second | -0.066 | [-0.171, -0.058] | 0 of 5 |
+| B | B | trained first, then frozen | +0.003 | [-0.006, +0.030] | 5 of 5 |
+| B | A | trained second | +0.083 | [+0.053, +0.128] | 0 of 5 |
+
+Read against the pre-registered criterion — the median bias of the biased
+node below 5 per cent in at least 4 of 5 seeds — training node B first
+**meets it, 5 of 5**, and training node A first does not, 0 of 5. Read
+against what the runs show, the criterion measured the wrong thing: the bias
+does not go away, it moves to whichever term is fitted second. Training B
+first takes node B from -0.160 to +0.003 and puts node A, which the joint fit
+left at -0.014, at +0.083. Both readings are reported because the criterion
+was fixed in advance and the observation contradicts what it was meant to
+capture. The procedure is in any case not available to a user with two
+unknown terms: its first step needs the other node's true mechanism, and
+nothing tells the user which ordering to use.
+
+**Loss weighting.** Each node's residual was weighted by the inverse of that
+state's observed variance (0.554, 0.433, 1.0 on this fixture), expressed as
+one single-state replica experiment per state so that the trainer's own
+`metadata[:weight]` carries it. Node B's bias grows: median -0.247 against
+-0.160, range -0.309 to -0.213, and its rate error rises from 0.164 to 0.236.
+**0 of 5 seeds meet the criterion. Refuted.**
+
 ## Report fields
 
 | Field | Meaning |
