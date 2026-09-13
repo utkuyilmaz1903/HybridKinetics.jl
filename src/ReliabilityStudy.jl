@@ -285,7 +285,8 @@ end
 const RELIABILITY_AUDIT_COLUMNS = (:fixture, :design, :seed, :noise, :library,
     :variant, :success, :support_f1, :extras, :n_terms, :denominator_min_samples,
     :denominator_min_box, :denominator_min_extended, :sign_change_box,
-    :sign_change_extended, :negative_rate_box, :visited_min, :data_residual,
+    :sign_change_extended, :negative_rate_box, :negative_rate_extended,
+    :rate_min_extended, :visited_min, :data_residual,
     :holdout_residual, :diverged, :train_time_s)
 
 """How far past the observed range the widened grid of the audit reaches."""
@@ -338,14 +339,16 @@ function reliability_denominator_report(candidate::ImplicitCandidate, X;
     wide = _reliability_grid(max.(0.0, lo .- margin .* width), hi .+ margin .* width,
         n_grid, max_points)
     rate_box, denominator_box = _evaluate_candidate(spec, numerator, denominator, box)
-    _, denominator_wide = _evaluate_candidate(spec, numerator, denominator, wide)
+    rate_wide, denominator_wide = _evaluate_candidate(spec, numerator, denominator, wide)
     return (;
         min_samples = minimum(at_samples),
         min_box = minimum(denominator_box),
         min_extended = minimum(denominator_wide),
         sign_change_box = minimum(denominator_box) < 0 < maximum(denominator_box),
         sign_change_extended = minimum(denominator_wide) < 0 < maximum(denominator_wide),
-        negative_rate_box = any(<(0), rate_box))
+        negative_rate_box = any(<(0), rate_box),
+        negative_rate_extended = any(<(0), rate_wide),
+        rate_min_extended = minimum(rate_wide))
 end
 
 """
@@ -415,7 +418,8 @@ function reliability_divergence_audit(; seeds = RELIABILITY_SEEDS,
                 Matrix(trained.X[discovery_rows, :]); margin) :
                      (; min_samples = NaN, min_box = NaN, min_extended = NaN,
                 sign_change_box = false, sign_change_extended = false,
-                negative_rate_box = false)
+                negative_rate_box = false, negative_rate_extended = false,
+                rate_min_extended = NaN)
             data_residual = NaN
             holdout_residual = NaN
             visited_min = NaN
@@ -448,6 +452,8 @@ function reliability_divergence_audit(; seeds = RELIABILITY_SEEDS,
                 sign_change_box = report.sign_change_box,
                 sign_change_extended = report.sign_change_extended,
                 negative_rate_box = report.negative_rate_box,
+                negative_rate_extended = report.negative_rate_extended,
+                rate_min_extended = report.rate_min_extended,
                 visited_min,
                 data_residual, holdout_residual,
                 diverged = candidate !== nothing &&
@@ -494,7 +500,8 @@ function read_reliability_audit_csv(path::AbstractString)
             column in (:fixture, :design, :library, :variant, :extras) ? String(text) :
             column in (:seed, :n_terms) ? parse(Int, text) :
             column in (:success, :sign_change_box, :sign_change_extended,
-                :negative_rate_box, :diverged) ? (text == "true") :
+                :negative_rate_box, :negative_rate_extended, :diverged) ?
+            (text == "true") :
             parse(Float64, text)
         end
         push!(rows, NamedTuple{Tuple(header)}(Tuple(values)))
@@ -526,6 +533,7 @@ function reliability_audit_summary(rows)
         ("sign change on the sample box", row -> row.sign_change_box),
         ("sign change on the widened box", row -> row.sign_change_extended),
         ("negative rate on the sample box", row -> row.negative_rate_box),
+        ("negative rate on the widened box", row -> row.negative_rate_extended),
         ("no candidate at all", row -> !row.success))
         caught = count(flag, diverged)
         false_alarms = count(flag, fine)
