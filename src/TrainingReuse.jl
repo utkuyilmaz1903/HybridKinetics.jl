@@ -292,13 +292,27 @@ the package has always done.
 function _train_with_restarts(p_init, set::ExperimentSet, model::UDEModel, locked,
         execution, verbose, seed, warmup)
     single = TrainingConfig(locked; restarts = 1)
-    losses = Float64[]
-    best = nothing
-    for k in 1:(locked.restarts)
-        start = k == 1 ? p_init : _reinitialise_network(p_init, model, seed + k)
-        attempt = train_experiments_with_warmup(start, set, model;
+    return _best_of_restarts(p_init, model, locked.restarts, seed) do start
+        train_experiments_with_warmup(start, set, model;
             config = single, execution = execution, verbose = verbose,
             seed = seed, warmup = warmup)
+    end
+end
+
+"""
+    _best_of_restarts(fit, p_init, model, restarts, seed)
+
+`fit(start)` run `restarts` times and the `TrainingResult` with the lowest
+final loss returned, carrying every attempt's loss in its metadata under
+`restart_losses`. Restart one starts from `p_init` unchanged, so a single
+restart is the fit that would have happened anyway; each later one redraws the
+neural block from `seed` and keeps the physical guess.
+"""
+function _best_of_restarts(fit, p_init, model::UDEModel, restarts::Integer, seed)
+    losses = Float64[]
+    best = nothing
+    for k in 1:restarts
+        attempt = fit(k == 1 ? p_init : _reinitialise_network(p_init, model, seed + k))
         push!(losses, Float64(attempt.final_loss))
         if best === nothing || attempt.final_loss < best.final_loss
             best = attempt

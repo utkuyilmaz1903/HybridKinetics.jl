@@ -772,6 +772,13 @@ function train_ude(p_init::P, data::AbstractMatrix,
 end
 
 function train_ude(p_init, data, t_data, u0, tspan, model::UDEModel; kwargs...)
+    config = get(values(kwargs), :config, nothing)
+    config !== nothing && config.restarts > 1 && throw(ArgumentError(
+        "restarts is $(config.restarts), but train_ude fits one experiment and " *
+        "has nothing to select restarts on: the lowest single-experiment loss " *
+        "is not the lowest joint loss. Set restarts on the joint fit instead, " *
+        "through discover_unknown_terms(training = ...), train_experiments or " *
+        "train_experiments_with_warmup"))
     return _train_ude_model(p_init, data, t_data, u0, tspan, model; kwargs...)
 end
 
@@ -925,7 +932,31 @@ function train_experiments(p_init, set::ExperimentSet, nn, st;
         converged, retcode)
 end
 
+"""
+    train_experiments(p_init, set, model; config, seed, ...)
+
+Joint fit over every experiment in `set`.
+
+`config.restarts` above 1 fits that many draws of the neural term and returns
+the one that reached the lowest final loss, with every attempt's loss in the
+result's metadata under `restart_losses`. Restart one is `p_init` as given;
+each later one redraws the neural block from `seed` and keeps the physical
+guess, so a set of restarts repeats exactly. Anything already trained into the
+neural block of `p_init` — a warm-up, say — is therefore kept only by restart
+one; wrap the whole fit instead if the warm-up should be repeated per restart,
+as `train_experiments_with_warmup` and `discover_unknown_terms` do.
+"""
 function train_experiments(p_init, set::ExperimentSet, model::UDEModel; kwargs...)
+    options = values(kwargs)
+    config = get(options, :config, nothing)
+    if config !== nothing && config.restarts > 1
+        rest = Base.structdiff(options, NamedTuple{(:config,)})
+        return _best_of_restarts(p_init, model, config.restarts,
+            get(options, :seed, 0)) do start
+            train_experiments(start, set, model;
+                rest..., config = TrainingConfig(config; restarts = 1))
+        end
+    end
     return train_experiments(
         p_init, set, model.nn, model.st;
         model = model, network = model.network, kwargs...)

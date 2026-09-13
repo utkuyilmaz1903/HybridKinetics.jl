@@ -143,3 +143,66 @@ end
     @test losses[1] == once.final_loss
     @test thrice.final_loss ≤ once.final_loss
 end
+
+@testset "restarts reach the entry points that accept the configuration" begin
+    # An option a caller can set and the code then ignores is worse than one
+    # that is not there. Every entry point taking a TrainingConfig either acts
+    # on restarts or says it cannot.
+    net = HybridKinetics.build_hill_recovery_network(; known = false, hill_order = 2)
+    truth_net = HybridKinetics.build_hill_recovery_network(; known = true, hill_order = 2)
+    model, p0 = build_ude_model(MersenneTwister(103), net)
+    names = Tuple(parameter_schema(model).phys_names)
+    start = pack_parameters(
+        NamedTuple{names}(ntuple(_ -> 0.8, length(names))), p0.nn)
+    budget = HybridKinetics.LIBRARY_STUDY_TWO_STATE_BUDGET.smoke
+    set = HybridKinetics.generate_recovery_experiments(
+        MersenneTwister(103), truth_net, HybridKinetics.LIBRARY_STUDY_TWO_STATE_PARAMS;
+        tspan = budget.tspan, n_points = budget.n_points, noise_σ = 0.0)
+    split = HybridKinetics.reference_protocol_experiment_split(set)
+    config = HybridKinetics.lock_training_config(model,
+        HybridKinetics.reference_protocol_training_config(;
+            adam_iterations = budget.adam_iterations,
+            bfgs_iterations = budget.bfgs_iterations, model = model))
+
+    once = train_experiments(start, split.train, model; config = config, verbose = false)
+    twice = train_experiments(start, split.train, model;
+        config = TrainingConfig(config; restarts = 2), verbose = false)
+    losses = twice.metadata.config.restart_losses
+    @test length(losses) == 2
+    @test losses[1] == once.final_loss
+    @test twice.final_loss == minimum(losses)
+
+    # train_ude fits one experiment and has nothing to select on, so it says so
+    # rather than accepting the option and dropping it
+    first_exp = first(split.train.experiments)
+    tspan = (first(first_exp.times), last(first_exp.times))
+    @test_throws ArgumentError train_ude(start, first_exp.observations,
+        first_exp.times, first_exp.u0, tspan, model;
+        config = TrainingConfig(config; restarts = 2), verbose = false)
+end
+
+@testset "discover_unknown_terms acts on the restarts it is given" begin
+    # The headline entry point takes a TrainingConfig, so restarts has to reach
+    # the fit it runs; and one restart has to leave that fit exactly as it was.
+    net = HybridKinetics.build_hill_recovery_network(; known = false, hill_order = 2)
+    truth_net = HybridKinetics.build_hill_recovery_network(; known = true, hill_order = 2)
+    budget = HybridKinetics.LIBRARY_STUDY_TWO_STATE_BUDGET.smoke
+    set = HybridKinetics.generate_recovery_experiments(
+        MersenneTwister(103), truth_net, HybridKinetics.LIBRARY_STUDY_TWO_STATE_PARAMS;
+        tspan = budget.tspan, n_points = budget.n_points, noise_σ = 0.0)
+    training = TrainingConfig(adam_iterations = budget.adam_iterations,
+        bfgs_iterations = budget.bfgs_iterations, log_every = 10^6)
+    once = discover_unknown_terms(net, set; training = training, seed = 103,
+        verbose = false)
+    again = discover_unknown_terms(net, set;
+        training = TrainingConfig(training; restarts = 1), seed = 103, verbose = false)
+    @test again.training.final_loss == once.training.final_loss
+
+    twice = discover_unknown_terms(net, set;
+        training = TrainingConfig(training; restarts = 2), seed = 103, verbose = false)
+    losses = twice.training.metadata.config.restart_losses
+    @test length(losses) == 2
+    @test losses[1] == once.training.final_loss
+    @test twice.training.final_loss == minimum(losses)
+    @test twice.training.final_loss ≤ once.training.final_loss
+end
