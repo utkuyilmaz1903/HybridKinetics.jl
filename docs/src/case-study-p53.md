@@ -129,23 +129,45 @@ on an observed grid. Nothing is tuned per cell. The figure is drawn by
 
 ## [Results](@id p53-results)
 
-Run on 2026-09-06 with Julia 1.10.12, OrdinaryDiffEq 7.8.1, SciMLSensitivity
-7.119.2, Lux 1.31.4, Optimization 5.9.0, Zygote 0.7.13 (SciMLBase 3.50.2), 4
-cores, with the laccase model variants training alongside for part of the
-time: 1,507 s for the run with the reference defaults and 1,404 s for the run
-with stability selection (the same training; the two runs give the same
-trained model, loss 0.0625). Cells: 40 of the 49 passing cells of the 60
+!!! warning "The numbers published on this page from 0.13 to 0.17.1 were computed with a masked-observation bug"
+    Before 0.17.2, `discover_unknown_terms` trained its warm-up on the
+    unobserved Mdm2 row as if it had been measured (the row is `NaN`), so
+    the warm-up loss was `NaN`, every adjoint solve of its 100 Adam steps
+    exited on `NaN` (204 solver warnings in the 0.13 log), and the joint fit
+    started from parameters moved by a meaningless gradient; and the
+    identifiability diagnostic kept the Jacobian rows of the unobserved Mdm2
+    entries in the Fisher information and in the production/destruction
+    cosine. The fix (changelog, 0.17.2) changed the trained model, the
+    diagnostic and the learned rate on this page, and the pre-fix numbers
+    were reproduced exactly with the pre-fix code before being replaced.
+    What changed: training loss 0.0625 → 0.0689; per-cell RMSE 0.243 → 0.255
+    (training) and 0.187 → 0.194 (held out); fitted `k_prod` 0.45 → 0.41,
+    `k_m` 2.90 → 1.83, `k_dm` 0.0155 → 0.0111 (Mdm2 half-life 45 h → 62 h);
+    collinearity 0.9997 → 0.9905 and Fisher condition number 3,973 →
+    23,700; the model's Mdm2 range 0.05–43.4 → 0.05–29.8 model units; the
+    learned rate's rise moved from a broad step between 2 and 7 units to a
+    sharp one between 2 and 4. What did not change: the fit is a first pulse
+    followed by a plateau, the diagnostic flags the production/destruction
+    scale as not separately identifiable, and no rational rate is accepted
+    (`DenominatorUnsafe`). The figure was redrawn from the new run.
+
+Run on 2026-09-13 (HybridKinetics 0.17.2) with Julia 1.10.12, OrdinaryDiffEq
+7.8.1, SciMLSensitivity 7.119.3, Lux 1.31.4, Optimization 5.9.0, Zygote
+0.7.13 (SciMLBase 3.51.0), 4 cores, with the pre-fix control run training
+alongside: 1,016 s for the run with the reference defaults and 933 s for the
+run with stability selection (the same training; the two runs give the same
+trained model, loss 0.0689). Cells: 40 of the 49 passing cells of the 60
 MCF7 cells at 4 Gy; 32 training, 8 held out.
 
 **Training.** The hybrid model reproduces the first p53 pulse of every cell
 and then settles at a constant level near 0.6 of the cell's maximum; it does
 not reproduce the later pulses. Root-mean-square error of the trained
-model's p53 against the data, in fractions of the cell's maximum: 0.243
-over the 32 training cells and 0.187 over the 8 held-out cells (per cell
-from 0.09 to 0.34). Fitted parameters, per hour: `k_prod` 0.45, `k_m` 2.90,
-`k_dm` 0.0155, that is, a half-life of Mdm2 in the model of about 45 h, so
+model's p53 against the data, in fractions of the cell's maximum: 0.255
+over the 32 training cells and 0.194 over the 8 held-out cells (per cell
+from 0.09 to 0.35). Fitted parameters, per hour: `k_prod` 0.41, `k_m` 1.83,
+`k_dm` 0.0111, that is, a half-life of Mdm2 in the model of about 62 h, so
 the model's Mdm2 rises monotonically through the 24 h (from the cell's
-initial p53 level to about 40 model units) instead of pulsing; with an
+initial p53 level to about 30 model units) instead of pulsing; with an
 Mdm2 that never comes down there is no negative feedback loop left to
 oscillate, and the trained model is a first pulse followed by a plateau. The
 data do oscillate (every selected cell has at least three peaks); the model
@@ -157,10 +179,10 @@ unobserved regulator, not evidence about the discovery step.
 
 **Identifiability.** The diagnostic flags the edge: correlation 1.000 between
 `k_prod` and the other parameters in the Fisher information, collinearity
-0.9997 between the production rate and the scale of the unknown term,
-Fisher condition number 3,973. As stated above, the production/destruction
-scale is not separately identifiable from p53 alone; the diagnostic reports
-exactly that.
+0.9905 between the production rate and the scale of the unknown term,
+Fisher condition number 23,700, both computed over the observed p53 entries
+only. As stated above, the production/destruction scale is not separately
+identifiable from p53 alone; the diagnostic reports exactly that.
 
 **Discovery: no rational rate was accepted.** With the reference defaults and
 with stability selection, the discovery returned `DenominatorUnsafe`: the
@@ -170,14 +192,15 @@ equation, no hybrid residual, and no selection-frequency table (the stage
 runs after a candidate exists).
 
 **The learned rate.** Sampled on the range of the model's Mdm2 over the
-training cells (0.05 to 43.4 model units, 80 points), the learned
-per-concentration destruction rate of p53 is monotone increasing and
-saturating: 0.06 per hour at Mdm2 near 0, a steep rise between about 2 and
-7 model units, 0.57 at 5.5, 0.68 at 11, 0.72 at 22, and 0.77 at 38. Its
-shape, an increasing sigmoid, is the shape the safety check could not fit
-with a positive rational denominator at degree 2 on this wide domain.
+training cells (0.05 to 29.8 model units, 80 points), the learned
+per-concentration destruction rate of p53 is close to zero below 2 model
+units (0.013 per hour at Mdm2 near 0, 0.003 at 1), rises sharply between
+2 and 4 (0.07 at 2.3, 0.27 at 2.7, 0.44 at 3.1, 0.57 at 3.8), and then
+grows slowly: 0.60 at 5, 0.63 at 11, 0.66 at 19, 0.71 at 30. Its shape, a
+step followed by a slow ramp, is the shape the safety check could not fit
+with a positive rational denominator at degree 2 on this domain.
 
-![Top: four cells, two training and two held out, with the normalised p53-YFP (points), the trained model's p53 (solid), and its unobserved Mdm2 (dashed; it rises beyond the axis within the first hour and keeps rising). Bottom: the learned destruction rate of p53 against the model's Mdm2; no discovered form is drawn because none was accepted.](assets/p53_mdm2.png)
+![Top: four cells, two training and two held out, with the normalised p53-YFP (points), the trained model's p53 (solid), and its unobserved Mdm2 (dashed; it rises beyond the axis within the first hour and keeps rising, to about 30 model units at 24 h). Bottom: the learned destruction rate of p53 against the model's Mdm2, a step between 2 and 4 units followed by a slow ramp; no discovered form is drawn because none was accepted. Redrawn from the 0.17.2 run.](assets/p53_mdm2.png)
 
 **Comparison with the literature form.** The Mdm2-mediated degradation of
 p53 in the models of Geva-Zatorsky et al. (2006) is increasing in Mdm2,

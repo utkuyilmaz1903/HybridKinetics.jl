@@ -456,7 +456,7 @@ function discover_unknown_terms(network::BiologicalNetwork, experiments::Experim
             ude_init, first_exp.observations, first_exp.times, first_exp.u0, tspan, model;
             config = TrainingConfig(training; bfgs_iterations = 0,
                 horizon_schedule = HorizonCurriculum(fractions = [0.35, 0.7, 1.0])),
-            verbose = verbose)
+            verbose = verbose, mask = first_exp.mask)
         start = warm.params
     end
     trained = train_experiments(start, train_set, model; config = training,

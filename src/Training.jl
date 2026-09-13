@@ -484,7 +484,10 @@ end
     train_ude(p_init, data, t_data, u0, tspan, nn, st; model, network)
 
 Fit physical (and optional neural) parameters of a compiled UDE to one
-trajectory. Use `train_experiments` for masked multi-replicate data.
+trajectory. `mask` (default: every entry observed) drops the unobserved
+entries of `data` from the loss on every horizon slice; without it a `NaN`
+entry makes the loss non-finite. Use `train_experiments` for masked
+multi-replicate data.
 """
 function train_ude(p_init, data, t_data, u0, tspan, nn, st;
         model::Union{Nothing, UDEModel} = nothing,
@@ -499,7 +502,7 @@ end
         optimizer_state, checkpoint_path::Union{Nothing, AbstractString},
         checkpoint_every::Int, initial_iteration::Int, dual_init, rho_init,
         initial_outer::Int, initial_stage::Int, initial_stage_iteration::Int,
-        previous_residual_init::Float64, session) where {P}
+        previous_residual_init::Float64, session, mask) where {P}
     training_config = lock_training_config(model, training_config)
     local_session = session
     if local_session === nothing
@@ -515,13 +518,14 @@ end
         (training_config.constraint isa AugmentedLagrangianConfig ?
          training_config.constraint.initial_ρ : zero(eltype(p_init))) :
         rho_init
-    function make_loss(local_data, local_times, local_span)
+    function make_loss(local_data, local_times, local_span, local_mask)
         return (p, _) -> loss_mse(
             p, local_data, local_times, u0, local_span, model;
             constraint = training_config.constraint, dual, ρ,
-            solver_config = training_config.solver, diagnostics = diag)
+            solver_config = training_config.solver, diagnostics = diag,
+            mask = local_mask)
     end
-    full_loss = make_loss(data, t_data, tspan)
+    full_loss = make_loss(data, t_data, tspan, mask)
     initial_loss = try
         Float64(full_loss(p_init, nothing))
     catch error
@@ -531,7 +535,7 @@ end
             length(t_data))
         @warn "Full-horizon initial solve failed; starting curriculum." exception=error
         Float64(make_loss(data[:, 1:count], t_data[1:count],
-            (tspan[1], t_data[count]))(p_init, nothing))
+            (tspan[1], t_data[count]), mask[:, 1:count])(p_init, nothing))
     end
     history = Float64[]
     params = p_init
@@ -584,6 +588,7 @@ end
                 length(t_data))
             local_times = t_data[1:count]
             local_data = data[:, 1:count]
+            local_mask = mask[:, 1:count]
             local_span = (tspan[1], local_times[end])
             final_stage = outer == outer_iterations &&
                           stage == length(schedule)
@@ -602,7 +607,7 @@ end
                 "  → AL $outer/$outer_iterations, horizon ",
                 round(fraction; digits = 2))
             params, current_optimizer_state = _optimize_stage(
-                params, make_loss(local_data, local_times, local_span),
+                params, make_loss(local_data, local_times, local_span, local_mask),
                 stage_config, history, diag, verbose,
                 current_optimizer_state, checkpoint_hook)
         end
@@ -658,18 +663,23 @@ function _train_ude_model(p_init, data, t_data, u0, tspan, model::UDEModel;
         initial_stage::Int = 1,
         initial_stage_iteration::Int = 0,
         previous_residual_init = Inf,
-        session = nothing)
+        session = nothing,
+        mask = nothing)
     training_config = isnothing(config) ?
                       TrainingConfig(
         adam_iterations = adam_iters,
         adam_learning_rate = adam_lr,
         bfgs_iterations = bfgs_iters,
         log_every = log_every) : config
+    resolved_mask = mask === nothing ? trues(size(data)) : mask
+    size(resolved_mask) == size(data) ||
+        throw(DimensionMismatch("mask and data must have equal size"))
     return _train_ude_locked(
         p_init, data, t_data, u0, tspan, model, training_config, verbose,
         Int(seed), optimizer_state, checkpoint_path, checkpoint_every,
         initial_iteration, dual_init, rho_init, initial_outer, initial_stage,
-        initial_stage_iteration, Float64(previous_residual_init), session)
+        initial_stage_iteration, Float64(previous_residual_init), session,
+        resolved_mask)
 end
 
 const _DEFAULT_TRAINING_CONFIG = TrainingConfig()
@@ -678,7 +688,9 @@ const _DEFAULT_TRAINING_CONFIG = TrainingConfig()
     train_ude(p_init, data, t_data, u0, tspan, model::UDEModel; kwargs...)
 
 Fit physical (and optional neural) parameters of a compiled UDE to one
-trajectory. Use `train_experiments` for masked multi-replicate data.
+trajectory. `mask` (default: every entry observed) drops the unobserved
+entries of `data` from the loss. Use `train_experiments` for masked
+multi-replicate data.
 """
 function _train_ude_default(p_init::P, data::AbstractMatrix,
         t_data::AbstractVector, u0::AbstractVector,

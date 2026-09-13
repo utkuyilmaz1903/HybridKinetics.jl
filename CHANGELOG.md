@@ -12,6 +12,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Nothing yet.
 
+## [0.17.2] - 2026-09-13
+
+### Fixed
+
+- Three call sites treated masked (unobserved, `NaN`) observations as
+  observed; found in the p53–Mdm2 case study, where Mdm2 is unobserved, and
+  first reported in the closed pull request #62:
+  1. the warm-up `train_ude` in `discover_unknown_terms`
+     (`src/DiscoverUnknownTerm.jl`, and `warmup_first_experiment` in
+     `src/TrainingReuse.jl`) trained without the experiment's mask, so a
+     `NaN` state gave a `NaN` warm-up loss and a corrupted start for the
+     joint fit; `train_ude` now takes `mask` and applies it on every horizon
+     slice;
+  2. `fisher_information_matrix` and the production/destruction cosine of
+     `production_destruction_tradeoff` (`src/Identifiability.jl`) masked only
+     the residual and kept the Jacobian rows of unobserved entries; both are
+     now computed over the observed entries only;
+  3. `_regulator_grid` (`src/Recovery.jl`) took the extrema of every
+     regulator sample, `NaN` included, so one missing value made the whole
+     default discovery grid `NaN`; it now uses the observed, finite values
+     and raises an error when there are none.
+  Fully observed data are unaffected: the 0.15 fingerprint suite reproduces
+  exactly and a rerun cell of the multi-term study gives identical rows. The
+  p53–Mdm2 case-study page is recomputed with the fix and says what changed
+  (training loss 0.0625 → 0.0689, collinearity 0.9997 → 0.9905, Fisher
+  condition number 3,973 → 23,700, a differently shaped learned rate; the
+  conclusions, a flagged scale and no accepted rational rate, are the same).
+
 ## [0.17.1] - 2026-09-12
 
 ### Fixed
@@ -656,7 +684,8 @@ thresholds, seeds, protocol settings, library construction) is unchanged.
 - `predict_ude` routes through `SciMLBase.ODEProblem` for both AD policies.
 - `RunMetadata` defaults to `BioDynaX.PACKAGE_VERSION`.
 
-[Unreleased]: https://github.com/utkuyilmaz1903/HybridKinetics.jl/compare/v0.17.1...HEAD
+[Unreleased]: https://github.com/utkuyilmaz1903/HybridKinetics.jl/compare/v0.17.2...HEAD
+[0.17.2]: https://github.com/utkuyilmaz1903/HybridKinetics.jl/compare/v0.17.1...v0.17.2
 [0.17.1]: https://github.com/utkuyilmaz1903/HybridKinetics.jl/compare/v0.17.0...v0.17.1
 [0.17.0]: https://github.com/utkuyilmaz1903/HybridKinetics.jl/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/utkuyilmaz1903/HybridKinetics.jl/compare/v0.15.0...v0.16.0

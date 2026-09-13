@@ -18,6 +18,51 @@
     @test uncertainty.method == :fisher
     @test length(uncertainty.estimates) == 3
     @test all(uncertainty.lower .<= uncertainty.estimates)
+    # The Fisher information is formed from the observed entries only: with
+    # state 2 unobserved it equals J'J/σ² over the rows of state 1, and with
+    # every entry observed the mask changes nothing.
+    hidden_mask = trues(size(clean))
+    hidden_mask[2, :] .= false
+    hidden = assess_identifiability(
+        model, params, clean, times, u0, tspan; mask = hidden_mask)
+    jacobian, _ = HybridKinetics.trajectory_jacobian(model, params, u0, tspan, times)
+    rows = vec(hidden_mask)
+    expected = (jacobian[rows, :]' * jacobian[rows, :]) ./ hidden.residual_variance
+    @test hidden.fisher_information≈expected rtol=1e-12
+    @test hidden.fisher_information != report.fisher_information
+    all_true = assess_identifiability(
+        model, params, clean, times, u0, tspan; mask = trues(size(clean)))
+    @test all_true.fisher_information == report.fisher_information
+    @test all_true.condition_number == report.condition_number
+end
+
+@testset "production/destruction cosine uses observed entries only" begin
+    rng = MersenneTwister(52)
+    network = build_hill_recovery_network(; known = false, hill_order = 2)
+    model, params = build_ude_model(rng, network)
+    u0 = [0.4, 0.3]
+    tspan = (0.0, 3.0)
+    times = collect(range(0.0, 3.0; length = 10))
+    data = predict_ude(params, u0, tspan, times, model)
+    full = HybridKinetics.production_destruction_tradeoff(
+        model, params, data, times, u0, tspan)
+    same = HybridKinetics.production_destruction_tradeoff(
+        model, params, data, times, u0, tspan; mask = trues(size(data)))
+    @test same.collinearity == full.collinearity
+    @test same.condition_number == full.condition_number
+    hidden_mask = trues(size(data))
+    hidden_mask[2, :] .= false
+    hidden = HybridKinetics.production_destruction_tradeoff(
+        model, params, data, times, u0, tspan; mask = hidden_mask)
+    @test 0.0 <= hidden.collinearity <= 1.0
+    @test hidden.collinearity != full.collinearity
+    # Over a single observed entry the two sensitivities are scalars, so the
+    # cosine is exactly one: the unobserved entries contribute nothing.
+    one_mask = falses(size(data))
+    one_mask[1, end] = true
+    single = HybridKinetics.production_destruction_tradeoff(
+        model, params, data, times, u0, tspan; mask = one_mask)
+    @test single.collinearity≈1.0 atol=1e-12
 end
 
 @testset "training retcode and gradient diagnostics" begin

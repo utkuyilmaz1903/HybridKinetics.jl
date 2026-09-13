@@ -162,10 +162,36 @@ end
         end
         masked_set = ExperimentSet(masked_experiments, set.state_names)
         @test all(!any(e.mask[2, :]) && all(e.mask[1, :]) for e in masked_set.experiments)
+        # The default regulator grid is set by the observed, finite regulator
+        # values only: one NaN used to make its extrema, and the grid, NaN.
+        hole = copy(first(set.experiments).observations)
+        hole[2, 1] = NaN
+        hole_exp = Experiment(first(set.experiments).name,
+            first(set.experiments).times, hole, first(set.experiments).u0)
+        hole_set = ExperimentSet([hole_exp], set.state_names)
+        hole_grid = collect(HybridKinetics._regulator_grid(hole_set, default[1].term))
+        @test all(isfinite, hole_grid)
+        finite_values = filter(isfinite, hole[2, :])
+        @test minimum(hole_grid) <= minimum(finite_values)
+        @test maximum(hole_grid) >= maximum(finite_values)
+        # A masked entry is ignored even when it is finite.
+        cover_exp = Experiment(first(set.experiments).name, first(set.experiments).times,
+            first(set.experiments).observations, first(set.experiments).u0;
+            mask = hole_exp.mask)
+        @test collect(HybridKinetics._regulator_grid(
+            ExperimentSet([cover_exp],
+                set.state_names), default[1].term)) == hole_grid
+        # No observed regulator value at all is an error, not a NaN grid.
+        @test_throws ArgumentError HybridKinetics._regulator_grid(
+            masked_set, default[1].term)
         masked = discover_unknown_terms(ude_net, masked_set; training = _DUT_CONFIG,
             holdout = 1, rng = MersenneTwister(7), verbose = false,
             regulator_grid = range(0.2, 1.4; length = 24))
+        # The warm-up honoured the mask, so the joint fit started from finite
+        # parameters and a finite loss.
+        @test isfinite(masked.training.initial_loss)
         @test isfinite(masked.training.final_loss)
+        @test all(isfinite, masked.params)
         if masked[1].discovery.success
             @test isfinite(masked.residuals.data_residual)
             @test isfinite(masked.residuals.data_residual_train)

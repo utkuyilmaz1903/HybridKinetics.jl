@@ -256,7 +256,8 @@ function warmup_first_experiment(p_init, set::ExperimentSet, model::UDEModel;
         config = warm_config,
         verbose = verbose,
         seed = seed,
-        session = session)
+        session = session,
+        mask = first_exp.mask)
     state = hasproperty(result.diagnostics, :optimizer_state) ?
             result.diagnostics.optimizer_state : nothing
     return (;
