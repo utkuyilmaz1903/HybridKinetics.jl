@@ -168,3 +168,35 @@ end
     @test 0 < hidden < total
     @test all(any(isfinite, e.observations[2, :]) for e in trained.train_set.experiments)
 end
+
+@testset "the frozen rate is the rate that was learned, and it carries a gradient" begin
+    # The sequential setting freezes the upstream term inside the right-hand
+    # side the optimiser differentiates. A rate read through
+    # `sample_unknown_destruction` fills a vector by index, so Zygote refuses
+    # it; one built on `_destruction_contribution` does not, and the custom
+    # term's own scale must put back exactly what was divided out.
+    fx = HybridKinetics.multi_term_fixture(:coupled)
+    first_net = fx.build(; unknown = (:A,))
+    first_model, first_p0 = build_ude_model(MersenneTwister(103), first_net)
+    first_term = only(HybridKinetics.neural_destruction_terms(first_model))
+    frozen = HybridKinetics.adjacent_initial_parameters(first_model, first_p0)
+    rate = (x, _p, _regulators) -> HybridKinetics._destruction_contribution(
+        first_term, first_term.target, x, frozen, first_model.nn,
+        first_model.st) / first_term.scale
+    second_net = HybridKinetics.adjacent_frozen_network(fx, :A, :B, rate)
+    second_model, second_p0 = build_ude_model(MersenneTwister(103), second_net)
+    custom = only(term for term in second_model.compiled.destruction_terms
+    if term isa HybridKinetics.CustomDestructionTerm)
+    @test custom.scale == first_term.scale
+    params = HybridKinetics.adjacent_initial_parameters(second_model, second_p0)
+    state = [0.5, 0.6, 0.4]
+    learned = HybridKinetics._destruction_contribution(first_term, first_term.target,
+        state, frozen, first_model.nn, first_model.st)
+    held = HybridKinetics._destruction_contribution(custom, custom.target, state,
+        params, second_model.nn, second_model.st)
+    @test held == learned
+    gradient = only(Zygote.gradient(
+        q -> sum(abs2, ude_rhs(state, q, 0.0, second_model)), params))
+    @test all(isfinite, ComponentArrays.getdata(gradient))
+    @test sqrt(sum(abs2, ComponentArrays.getdata(gradient))) > 0
+end

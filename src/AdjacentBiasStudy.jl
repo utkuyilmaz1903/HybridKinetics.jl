@@ -332,18 +332,30 @@ function adjacent_sequential_run(; seed, noise_σ, fixture, data, verbose, start
     first_term = only(neural_destruction_terms(first_model))
     # Step 2: freeze it, train the downstream term.
     frozen_params = first_fit.params
-    frozen_regulator = first_term.regulator
+    frozen_nn = first_model.nn
+    frozen_st = first_model.st
+    frozen_target = first_term.target
+    frozen_scale = first_term.scale
+    # The evaluator is called inside the right-hand side the optimiser
+    # differentiates, so it must not mutate and must not go through
+    # `sample_unknown_destruction`, which fills a vector by index and returns
+    # no gradient. `_destruction_contribution` is the same rate, read straight
+    # off the frozen network, and the custom term reapplies its own scale.
     frozen_rate = function (x, _p, _regulators)
-        state = fill(0.3, first_model.compiled.nstates)
-        state[frozen_regulator] = x[frozen_regulator]
-        _, D, _ = sample_unknown_destruction(first_model, frozen_params,
-            reshape(state, :, 1); term = first_term)
-        return max(first(D), 0.0)
+        value = _destruction_contribution(first_term, frozen_target, x,
+            frozen_params, frozen_nn, frozen_st)
+        return value / frozen_scale
     end
     second_net = adjacent_frozen_network(fx, upstream, downstream, frozen_rate)
     second_model, second_p0 = build_ude_model(MersenneTwister(seed), second_net)
     length(neural_destruction_terms(second_model)) == 1 || throw(ErrorException(
         "the frozen network must leave exactly one neural term"))
+    frozen_term = only(term for term in second_model.compiled.destruction_terms
+    if term isa CustomDestructionTerm)
+    frozen_term.scale == frozen_scale || throw(ErrorException(
+        "the frozen term's scale ($(frozen_term.scale)) differs from the neural " *
+        "term it replaces ($(frozen_scale)); the frozen rate would not be the " *
+        "rate that was learned"))
     second_fit = adjacent_fit(second_model,
         adjacent_initial_parameters(second_model, second_p0), train_set)
     rows = NamedTuple[]
