@@ -63,10 +63,25 @@ destruction term. This page collects every caveat in one place.
 
 - **The discovered form is a rational function, not a canonical Hill law.**
   The reference protocol recovers the true monomials of the Hill term (the
-  acceptance criterion is recall of at least 0.99), but nuisance terms remain,
-  typically a constant and a linear term. Combined support F1 is scored
-  against a floor of 0.50; it is not an acceptance criterion. The package does
-  not turn the neural term into a Hill expression with named parameters.
+  acceptance criterion is recall of at least 0.99), but extra terms remain,
+  a constant and a linear term. Combined support F1 is scored against a floor
+  of 0.50; it is not an acceptance criterion. The package does not turn the
+  neural term into a Hill expression with named parameters.
+- **What the support F1 of 0.57 measures.** It is not a mislabelled truth and
+  not an unattainable ceiling: a candidate carrying exactly the recorded true
+  support reproduces the Hill law to 1e-12 and scores 1.0, which the test
+  suite checks. The extra terms carry coefficients of the same order as the
+  true ones — no sparsity threshold below 0.2 removes anything, and one large
+  enough to remove them also removes true monomials — and they describe the
+  gap between the trained network's rate and the true law rather than the
+  mechanism: removing one costs three to seven times the regression residual
+  while leaving the fit to the true rate unchanged or better, where removing a
+  true term costs twenty times and makes it worse. Read the 0.57 as a measure
+  of how far the learned rate sits from the true law in the library's basis.
+  Information criteria, separate numerator and denominator thresholds, and
+  derivative rows were all tested in 0.18 and none of them helps; the numbers
+  are under "Why the extra terms survive" on the
+  [Benchmarks](benchmarks.md#Why-the-extra-terms-survive) page.
 - **Michaelis-Menten unknown terms** are checked on the neural-rate error and
   the residual only; canonical Michaelis-Menten support from the trained
   network is not claimed.

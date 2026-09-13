@@ -184,10 +184,15 @@ page). The reference recovery protocol behind the
   against each other.
 - **The discovered form is a rational function, not a canonical Hill law.**
   The reference protocol recovers the true monomials of the Hill term (the
-  acceptance criterion is recall of at least 0.99), but nuisance terms remain.
-  The combined support F1 threshold in the benchmarks is 0.50; the package does
-  not turn the neural term into a canonical Hill expression with named
-  parameters.
+  acceptance criterion is recall of at least 0.99), but extra terms remain, a
+  constant and a linear term, which hold the combined support F1 at about
+  0.57. That number measures how far the learned rate sits from the true law
+  in the library's basis, not a mislabelled truth and not an unreachable
+  ceiling: the extra terms carry coefficients of the same order as the true
+  ones and describe the network's error rather than the mechanism (0.18
+  study, benchmarks page). The F1 threshold in the benchmarks is 0.50; the
+  package does not turn the neural term into a canonical Hill expression with
+  named parameters.
 - **Validation on synthetic data; two measured datasets.** The benchmarks and
   the tests use data generated from the compiled ground-truth mechanism, and
   the CSV in `examples/data/` is synthetic. The primary real-data example is
