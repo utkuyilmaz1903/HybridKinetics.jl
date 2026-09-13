@@ -6,7 +6,7 @@
 ###############################################################################
 module HybridKinetics
 
-const PACKAGE_VERSION = v"0.17.2"
+const PACKAGE_VERSION = v"0.18.0"
 
 # -- External dependencies ----------------------------------------------------
 using Dates

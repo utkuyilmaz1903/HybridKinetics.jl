@@ -730,7 +730,8 @@ thresholds, seeds, protocol settings, library construction) is unchanged.
 - `predict_ude` routes through `SciMLBase.ODEProblem` for both AD policies.
 - `RunMetadata` defaults to `BioDynaX.PACKAGE_VERSION`.
 
-[Unreleased]: https://github.com/utkuyilmaz1903/HybridKinetics.jl/compare/v0.17.2...HEAD
+[Unreleased]: https://github.com/utkuyilmaz1903/HybridKinetics.jl/compare/v0.18.0...HEAD
+[0.18.0]: https://github.com/utkuyilmaz1903/HybridKinetics.jl/compare/v0.17.2...v0.18.0
 [0.17.2]: https://github.com/utkuyilmaz1903/HybridKinetics.jl/compare/v0.17.1...v0.17.2
 [0.17.1]: https://github.com/utkuyilmaz1903/HybridKinetics.jl/compare/v0.17.0...v0.17.1
 [0.17.0]: https://github.com/utkuyilmaz1903/HybridKinetics.jl/compare/v0.16.0...v0.17.0
