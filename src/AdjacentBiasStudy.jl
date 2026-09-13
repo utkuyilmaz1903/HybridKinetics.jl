@@ -148,24 +148,45 @@ end
 
 # -- The settings --------------------------------------------------------------
 
-"""Pre-train one head so that its rate matches `target` on the grid `r`."""
+"""
+Pre-train one head so that its rate matches `target` on the grid `r`, leaving
+the physical parameters and every other head exactly as they were.
+
+The loss calls `_destruction_contribution` rather than
+`sample_unknown_destruction`, because the latter fills a plain vector by
+index and Zygote cannot differentiate through it — a loss built on it returns
+no gradient and the fitting loop would silently do nothing. The gradient is
+also masked to this head's block, so the other coordinates are untouched by
+construction and not merely by the gradient happening to vanish.
+"""
 function adjacent_pretrain_head!(model, params, term, r, target;
-        iterations::Int = 800, learning_rate::Float64 = 0.02)
+        iterations::Int = 800, learning_rate::Float64 = 0.02, fill_value::Real = 0.3)
     nstates = model.compiled.nstates
-    X = fill(0.3, nstates, length(r))
-    X[term.regulator, :] .= r
-    loss = function (p)
-        _, D, _ = sample_unknown_destruction(model, p, X; term = term)
-        return mean(abs2, (vec(D) .- target) ./ max.(target, 1.0e-3))
-    end
-    optimiser = Optimisers.Adam(learning_rate)
-    state = Optimisers.setup(optimiser, params)
-    current = params
+    inputs = [begin
+                  x = fill(float(fill_value), nstates)
+                  x[term.regulator] = value
+                  x
+              end
+              for value in r]
+    y = collect(float.(target))
+    weights = 1.0 ./ (y .+ 0.05 * maximum(y))
+    selector = zero(params)
+    getproperty(selector.nn, Symbol("head_$(term.nn_index)")) .= 1.0
+    mask = ComponentArrays.getdata(selector)
+    axes = ComponentArrays.getaxes(params)
+    rate = (p, x) -> _destruction_contribution(term, term.target, x, p, model.nn, model.st)
+    loss = p -> sum(i -> abs2(weights[i] * (rate(p, inputs[i]) - y[i])),
+        eachindex(y)) / length(y)
+    current = copy(params)
+    state = Optimisers.setup(Optimisers.Adam(learning_rate), current)
     for _ in 1:iterations
-        gradient = only(Zygote.gradient(loss, current))
+        value, back = Zygote.pullback(loss, current)
+        gradient = back(one(value))[1]
         gradient === nothing && break
-        all(isfinite, gradient) || break
-        state, current = Optimisers.update(state, current, gradient)
+        data = ComponentArrays.getdata(gradient) .* mask
+        all(isfinite, data) || break
+        state, current = Optimisers.update(state, current,
+            ComponentArrays.ComponentVector(data, axes))
     end
     return current
 end
