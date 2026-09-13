@@ -247,3 +247,44 @@ end
     @test fit.params.phys.k_ba ≈ raw
     @test fit.params.phys.k_a != init.phys.k_a || isfinite(fit.final_loss)
 end
+
+@testset "train_ude applies the observation mask" begin
+    # An unobserved state (NaN row, masked) must not poison the loss: before
+    # 0.17.2 train_ude ignored the mask, so the warm-up of
+    # discover_unknown_terms on a partially observed experiment started from
+    # a NaN loss.
+    rng = MersenneTwister(11)
+    net = build_linear_test_network()
+    model, p0 = build_ude_model(rng, net)
+    truth = pack_parameters((k_ba = 0.8, k_a = 1.2, k_b = 0.5), p0.nn)
+    u0 = [0.35, 0.25]
+    tspan = (0.0, 4.0)
+    times, data, _, _ = generate_data(
+        rng; network = net, u0 = u0, tspan = tspan, n_points = 20,
+        noise_σ = 0.0, truth_params = truth)
+    init = pack_parameters((k_ba = 1.1, k_a = 0.9, k_b = 0.7), p0.nn)
+    config = TrainingConfig(adam_iterations = 2, bfgs_iterations = 0,
+        log_every = 10^6)
+    hidden = copy(data)
+    hidden[2, :] .= NaN
+    mask = trues(size(data))
+    mask[2, :] .= false
+    fit = train_ude(init, hidden, times, u0, tspan, model;
+        config = config, verbose = false, mask = mask)
+    @test isfinite(fit.initial_loss)
+    @test isfinite(fit.final_loss)
+    @test all(isfinite, fit.params)
+    # Without the mask the same data give a non-finite loss.
+    bare = train_ude(init, hidden, times, u0, tspan, model;
+        config = config, verbose = false)
+    @test !isfinite(bare.initial_loss)
+    # With every entry observed the mask keyword changes nothing.
+    plain = train_ude(init, data, times, u0, tspan, model;
+        config = config, verbose = false)
+    all_true = train_ude(init, data, times, u0, tspan, model;
+        config = config, verbose = false, mask = trues(size(data)))
+    @test all_true.params == plain.params
+    @test all_true.final_loss == plain.final_loss
+    @test_throws DimensionMismatch train_ude(init, data, times, u0, tspan, model;
+        config = config, verbose = false, mask = trues(2, 3))
+end

@@ -709,8 +709,18 @@ function _train_unknown_edge(rng, ude_model, ude_p0, truth_net, truth_params;
 end
 
 function _regulator_grid(set::ExperimentSet, term; npoints::Int = 80)
-    values = reduce(vcat, (exp.observations[term.regulator, :]
-    for exp in set.experiments))
+    # Only observed, finite regulator values set the grid: a masked or NaN
+    # entry would otherwise make the whole grid NaN.
+    r = term.regulator
+    values = Float64[]
+    for exp in set.experiments
+        obs = exp.observations
+        for j in axes(obs, 2)
+            exp.mask[r, j] && isfinite(obs[r, j]) && push!(values, Float64(obs[r, j]))
+        end
+    end
+    isempty(values) && throw(ArgumentError(
+        "regulator state $(r) has no finite observed values in the training experiments"))
     lo, hi = extrema(values)
     span = max(hi - lo, 0.1)
     start = max(0.05, lo - 0.1 * span)

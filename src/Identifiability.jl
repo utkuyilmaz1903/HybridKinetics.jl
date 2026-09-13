@@ -54,7 +54,8 @@ end
 """
     fisher_information_matrix(model, p, data, t_data, u0, tspan; kwargs...)
 
-Gauss–Newton Fisher information matrix `J'J / σ²` for physical parameters.
+Gauss–Newton Fisher information matrix `J'J / σ²` for physical parameters,
+over the observed entries of `data` (`mask`, all by default).
 """
 function fisher_information_matrix(model::UDEModel, p, data, t_data, u0, tspan;
         mask = trues(size(data)),
@@ -68,7 +69,11 @@ function fisher_information_matrix(model::UDEModel, p, data, t_data, u0, tspan;
     σ² = residual_variance === nothing ?
          max(eps(), sum(abs2, residual) / max(1, count(mask))) :
          float(residual_variance)
-    information = (jacobian' * jacobian) ./ σ²
+    # Only observed entries carry information: drop the Jacobian rows of
+    # unobserved (masked) entries before forming J'J.
+    observed = vec(mask)
+    J = all(observed) ? jacobian : jacobian[observed, :]
+    information = (J' * J) ./ σ²
     return information, names, σ²
 end
 
@@ -169,8 +174,10 @@ end
 Practical collinearity between a production parameter (default `k_prod`) and a
 multiplicative scale on unknown neural destruction `D(z)`. Reports Fisher
 condition number and trajectory-Jacobian cosine. This is not structural
-identifiability. `mask` marks the observed entries of `data` for the Fisher
-information (all by default); unobserved states pass a `false` row.
+identifiability. `mask` marks the observed entries of `data` (all by
+default); the Fisher information and the trajectory-Jacobian cosine are
+computed over the observed entries only, so an unobserved state (a `false`
+row) contributes nothing to either.
 """
 function production_destruction_tradeoff(
         model::UDEModel, p, data, t_data, u0, tspan;
@@ -216,8 +223,12 @@ function production_destruction_tradeoff(
             j_p = jacobian[:, prod_idx]
         end
         if j_d !== nothing && j_p !== nothing
-            denom = norm(j_p) * norm(j_d)
-            collinearity = denom == 0 ? 0.0 : abs(dot(j_p, j_d)) / denom
+            # The cosine is taken over the observed entries only.
+            observed = vec(mask)
+            jp = all(observed) ? j_p : j_p[observed]
+            jd = all(observed) ? j_d : j_d[observed]
+            denom = norm(jp) * norm(jd)
+            collinearity = denom == 0 ? 0.0 : abs(dot(jp, jd)) / denom
         end
     end
     unidentifiable_edge = unidentifiable_edge_from_fisher(;
