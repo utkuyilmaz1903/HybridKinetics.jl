@@ -126,7 +126,7 @@ function reliability_discovery(trained)
             residuals = Float64[]
             for experiment in trained.holdout_set.experiments
                 value = try
-                    _library_study_residual(trained.model, trained.params,
+                    _reliability_residual(trained.model, trained.params,
                         trained.term, rate_fn, rows, experiment)
                 catch
                     Inf
@@ -148,6 +148,28 @@ function reliability_discovery(trained)
               count(!=(0.0), candidate.denominator_coefficients)
     return (; scores, support, denominator_min, holdout, diverged, nn_rate_rmse,
         n_terms, candidate, rows)
+end
+
+"""
+RMSE of the hybrid model against one experiment, over the entries that were
+observed. `_library_study_residual` averages over the whole array, which is
+`NaN` as soon as one observation is hidden, so a masked run would read as a
+divergence whatever the solver did.
+"""
+function _reliability_residual(model, p, term, rate_fn, rows, experiment::Experiment)
+    rhs = _library_study_hybrid_rhs(model, p, term, rate_fn, rows)
+    times = experiment.times
+    solution = solve(
+        SciMLBase.ODEProblem(rhs, experiment.u0, (first(times), last(times))),
+        Tsit5(); saveat = times, sensealg = nothing)
+    SciMLBase.successful_retcode(solution) || return Inf
+    predicted = Array(solution)
+    size(predicted) == size(experiment.observations) || return Inf
+    observed = count(experiment.mask)
+    observed == 0 && return Inf
+    residual = ifelse.(experiment.mask,
+        predicted .- experiment.observations, zero(eltype(predicted)))
+    return sqrt(sum(abs2, residual) / observed)
 end
 
 function _reliability_support_label(candidate::ImplicitCandidate)

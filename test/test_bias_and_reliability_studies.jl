@@ -167,6 +167,13 @@ end
     total = sum(size(e.observations, 2) for e in trained.train_set.experiments)
     @test 0 < hidden < total
     @test all(any(isfinite, e.observations[2, :]) for e in trained.train_set.experiments)
+    # The held-out residual must be taken over the observed entries only, or a
+    # masked run reads as a divergence whatever the solver did.
+    # A failed solve gives `Inf`; only averaging over hidden entries gives
+    # `NaN`, so a masked run that reads as `NaN` is the bug and not a
+    # divergence.
+    discovery = HybridKinetics.reliability_discovery(trained)
+    @test discovery.candidate === nothing || !isnan(discovery.holdout)
 end
 
 @testset "the frozen rate is the rate that was learned, and it carries a gradient" begin
