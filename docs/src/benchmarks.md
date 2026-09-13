@@ -858,6 +858,39 @@ one single-state replica experiment per state so that the trainer's own
 -0.160, range -0.309 to -0.213, and its rate error rises from 0.164 to 0.236.
 **0 of 5 seeds meet the criterion. Refuted.**
 
+**Scale coupling.** A neural destruction term has no scale parameter to
+constrain: `NeuralDestructionTerm.scale` is a compile-time constant read off
+the stoichiometry, and the scale of the rate lives inside the network's
+output, so constraining the product of the two scales would mean adding a
+penalty term to the loss. Before building one, the held-out residual of the
+trained pair was measured with each learned rate multiplied by a constant,
+over a 5x5 grid of factors from 0.8 to 1.25.
+
+| seed | at (1, 1) | both x1.1 | both x0.9 | A x1.1, B x0.9 | A x0.9, B x1.1 |
+|---|---|---|---|---|---|
+| 103 | 0.0072 | 0.0171 | 0.0176 | 0.0892 | 0.1083 |
+| 107 | 0.0091 | 0.0169 | 0.0166 | 0.0926 | 0.1196 |
+| 111 | 0.0054 | 0.0174 | 0.0152 | 0.0891 | 0.1114 |
+| 113 | 0.0029 | 0.0191 | 0.0158 | 0.0839 | 0.1090 |
+| 127 | 0.0031 | 0.0156 | 0.0177 | 0.0849 | 0.1106 |
+
+The trained pair sits at the minimum of the grid in all five seeds. Moving
+both rates together by 10 per cent costs about 2.4 times the residual; moving
+them 10 per cent in opposite directions costs about 13 times, a ratio of 5.5
+to 6.3. The **ratio** of the two scales is therefore the well-determined
+direction and their common scale the shallow one, so a constraint on the
+product would act where the data are already informative. The bias measured
+above lies in that same well-determined direction — node B down, node A
+unchanged — which the data penalise by an order of magnitude, and the joint
+fit stops there anyway. That is further evidence for the reading above and
+against a scale-coupling explanation, so no constrained fit was built; what
+is reported is that the pre-registered correction targets the wrong
+direction.
+
+Environment: Julia 1.10.12, OrdinaryDiffEq 7.8.1, SciMLSensitivity 7.119.3,
+Lux 1.31.4, Optimization 5.9.0, Zygote 0.7.13, SciMLBase 3.51.0,
+HybridKinetics 0.18.0, four cores, 2026-09-13.
+
 ## Report fields
 
 | Field | Meaning |
