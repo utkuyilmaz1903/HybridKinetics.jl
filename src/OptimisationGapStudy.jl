@@ -25,7 +25,7 @@ const GAP_SEEDS = LIBRARY_STUDY_SEEDS
 const GAP_ALPHAS = collect(0.0:0.05:1.0)
 
 """Starting points the study can train from."""
-const GAP_INITIALISATIONS = (:standard, :true_rate)
+const GAP_INITIALISATIONS = (:standard, :true_rate, :analytic, :analytic_scale)
 
 const GAP_COLUMNS = (:fixture, :seed, :init_seed, :noise, :initialisation,
     :adam_iterations, :bfgs_iterations, :warmup, :initial_loss, :final_loss,
@@ -96,6 +96,81 @@ function gap_true_rate_on(r, truth)
         n = truth.n)
 end
 
+# -- A rate estimated from the data alone --------------------------------------
+
+"""
+A crude destruction rate read straight off the data. The two-state fixture is
+`dS/dt = k_prod R - D(R) S`, so `D(R) = (k_prod R - dS/dt) / S` at every
+observed point, with `dS/dt` a central difference. `k_prod` is not known to the
+fit either, and the production rate and the destruction scale trade off against
+each other -- the identifiability limit the package already documents -- so the
+estimate is only good up to a scale. It uses the same flat guess the package's
+own path starts from and adds no outside information.
+
+Returns the sampled pairs and a smoothed rate on `grid`: the points are binned
+by regulator value and each bin takes its median, which is robust to the
+outliers that dividing by a small target state produces.
+"""
+function gap_crude_rate(set::ExperimentSet, grid; k_prod_guess::Real = 0.8,
+        target_row::Int = 1, regulator_row::Int = 2, bins::Int = 12,
+        floor_value::Real = 1.0e-3)
+    regulators = Float64[]
+    rates = Float64[]
+    for experiment in set.experiments
+        observations = experiment.observations
+        times = experiment.times
+        for i in 2:(length(times) - 1)
+            target = observations[target_row, i]
+            regulator = observations[regulator_row, i]
+            (isfinite(target) && isfinite(regulator)) || continue
+            target > 1.0e-6 || continue
+            ahead = observations[target_row, i + 1]
+            behind = observations[target_row, i - 1]
+            (isfinite(ahead) && isfinite(behind)) || continue
+            derivative = (ahead - behind) / (times[i + 1] - times[i - 1])
+            isfinite(derivative) || continue
+            push!(regulators, regulator)
+            push!(rates, (k_prod_guess * regulator - derivative) / target)
+        end
+    end
+    values = collect(float.(grid))
+    isempty(regulators) &&
+        return (; regulators, rates, smoothed = fill(NaN, length(values)))
+    lo, hi = extrema(regulators)
+    edges = collect(range(lo, hi; length = bins + 1))
+    centres = Float64[]
+    medians = Float64[]
+    for b in 1:bins
+        left = edges[b]
+        right = b == bins ? edges[end] + eps() : edges[b + 1]
+        inside = [rates[k] for k in eachindex(rates) if left ≤ regulators[k] < right]
+        isempty(inside) && continue
+        push!(centres, (left + min(right, edges[end])) / 2)
+        push!(medians, median(inside))
+    end
+    length(centres) ≥ 2 || return (; regulators, rates,
+        smoothed = fill(max(float(floor_value), median(rates)), length(values)))
+    smoothed = map(values) do value
+        if value ≤ first(centres)
+            first(medians)
+        elseif value ≥ last(centres)
+            last(medians)
+        else
+            k = findlast(≤(value), centres)
+            if k === nothing
+                first(medians)
+            elseif k ≥ length(centres)
+                last(medians)
+            else
+                span = centres[k + 1] - centres[k]
+                weight = span == 0 ? 0.0 : (value - centres[k]) / span
+                (1 - weight) * medians[k] + weight * medians[k + 1]
+            end
+        end
+    end
+    return (; regulators, rates, smoothed = max.(float(floor_value), smoothed))
+end
+
 # -- One training --------------------------------------------------------------
 
 """
@@ -134,10 +209,17 @@ function gap_train(; seed::Integer, init_seed::Integer = seed, noise_σ::Real = 
         NamedTuple{names}(ntuple(_ -> 0.8, length(names))), p0.nn)
     term = only_unknown_destruction(model)
     truth = LIBRARY_STUDY_TWO_STATE_TRUTH
-    if initialisation === :true_rate
+    if initialisation !== :standard
         r = collect(_regulator_grid(split.train, term))
-        start = gap_pretrain_network(model, start, term, r,
-            gap_true_rate_on(r, truth); iterations = pretrain_iterations)
+        target = if initialisation === :true_rate
+            gap_true_rate_on(r, truth)
+        else
+            crude = gap_crude_rate(split.train, r)
+            initialisation === :analytic_scale ?
+            fill(median(crude.smoothed), length(r)) : crude.smoothed
+        end
+        start = gap_pretrain_network(model, start, term, r, target;
+            iterations = pretrain_iterations)
     end
     locked = lock_training_config(model,
         reference_protocol_training_config(;
