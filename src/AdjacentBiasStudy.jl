@@ -513,6 +513,18 @@ end
 _adjacent_median_or_nan(values) = isempty(values) ? NaN : median(values)
 
 """
+The label a row is grouped under. The sequential setting is two experiments,
+one per ordering, and pooling them would average a term that was fitted first
+with the same term fitted second.
+"""
+function adjacent_setting_label(row)
+    setting = string(row.setting)
+    setting == "sequential" || return setting
+    match = Base.match(r"upstream ([A-Za-z0-9_]+) ", string(row.note))
+    return match === nothing ? setting : "sequential, $(match.captures[1]) first"
+end
+
+"""
 The bias per setting and node. The pre-registered criteria are read against
 the joint fit's bias for the same node: returning to within 5 percentage
 points of it means the bias is a property of the data; staying under a third
@@ -521,12 +533,12 @@ minimum; a correction confirms when the median bias falls below 5 per cent.
 """
 function adjacent_summary(rows)
     out = NamedTuple[]
-    for setting in unique(r.setting for r in rows),
+    for setting in unique(adjacent_setting_label(r) for r in rows),
         node in sort(unique(r.node for r in rows))
 
         group = [r
                  for r in rows
-                 if string(r.setting) == string(setting) &&
+                 if adjacent_setting_label(r) == setting &&
                     string(r.node) == string(node)]
         isempty(group) && continue
         biases = [r.nn_rate_bias for r in group if isfinite(r.nn_rate_bias)]

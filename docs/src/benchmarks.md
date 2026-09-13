@@ -837,7 +837,7 @@ learned, and trains the remaining term against it. Both orderings were run.
 | A | A | trained first, then frozen | +0.096 | [-0.012, +0.198] | 2 of 5 |
 | A | B | trained second | -0.066 | [-0.171, -0.058] | 0 of 5 |
 | B | B | trained first, then frozen | +0.003 | [-0.006, +0.030] | 5 of 5 |
-| B | A | trained second | +0.083 | [+0.053, +0.128] | 0 of 5 |
+| B | A | trained second | +0.083 | [+0.052, +0.128] | 0 of 5 |
 
 Read against the pre-registered criterion — the median bias of the biased
 node below 5 per cent in at least 4 of 5 seeds — training node B first

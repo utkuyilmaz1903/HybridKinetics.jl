@@ -240,3 +240,23 @@ end
     summary = HybridKinetics.adjacent_summary(rows)
     @test isnan(only(s for s in summary if s.setting == "sequential").median_cross_term)
 end
+
+@testset "the two sequential orderings are not pooled" begin
+    # One ordering fits node A first and the other fits it second; averaging
+    # the two would report the mean of a term that was fitted first with the
+    # same term fitted second, which is the observation the experiment is for.
+    base = (; fixture = :coupled, seed = 103, noise = 0.0, setting = "sequential",
+        node = "A", role = "trained first; then frozen", nn_rate_bias = 0.10,
+        nn_rate_rmse = 0.05, final_loss = 1.0e-4, collinearity = 0.999,
+        cross_term_max = NaN, data_residual = NaN, holdout_residual = NaN,
+        train_time_s = 1.0, note = "upstream A frozen for the downstream fit")
+    other = (; base..., nn_rate_bias = -0.02,
+        note = "upstream B frozen for the downstream fit")
+    @test HybridKinetics.adjacent_setting_label(base) == "sequential, A first"
+    @test HybridKinetics.adjacent_setting_label(other) == "sequential, B first"
+    @test HybridKinetics.adjacent_setting_label((; base..., setting = "joint",
+        note = "")) == "joint"
+    summary = HybridKinetics.adjacent_summary([base, other])
+    @test length(summary) == 2
+    @test sort([row.median_bias for row in summary]) == [-0.02, 0.10]
+end
