@@ -70,6 +70,9 @@ rate.
 | `benchmark/scale_basis.jl` | library size versus node count | no |
 | `benchmark/library_comparison_study.jl` | the library comparison study: five seeds, three noise levels, three libraries; resumable CSV output and a summary table | weekly |
 | `benchmark/plot_library_comparison.jl` | figure of support F1 against noise per library from the study CSV (needs Plots) | no |
+| `benchmark/extra_terms_study.jl` | four explanations for the extra terms that survive the reference discovery, measured on one training's samples | no |
+| `benchmark/adjacent_bias_study.jl` | the adjacent-node bias under the joint fit, a true-rate start, sequential training in both orderings and variance weighting; `--scan` for the scale surface | no |
+| `benchmark/reliability_study.jl` | the initialisation spread, the warm-up length, and the audit of runs whose hybrid model will not resimulate | no |
 | `benchmark/allocation_check.jl` | allocation count of the in-place right-hand side | yes |
 | `benchmark/probe_datadriven.jl` | checks whether DataDrivenSparse resolves in an isolated environment | yes, allowed to fail |
 
