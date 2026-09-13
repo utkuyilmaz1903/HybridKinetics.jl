@@ -299,7 +299,8 @@ function _stage_config(config::TrainingConfig, stages::Int, final_stage::Bool)
     return TrainingConfig(
         adam_iterations, config.adam_learning_rate, bfgs_iterations,
         config.gradient_clip, config.log_every, config.constraint,
-        config.solver, config.horizon_schedule, config.frozen_phys)
+        config.solver, config.horizon_schedule, config.frozen_phys,
+        config.restarts)
 end
 
 function _optimize_stage(p_init::P, loss_closure::LossMSECall, config::TrainingConfig,

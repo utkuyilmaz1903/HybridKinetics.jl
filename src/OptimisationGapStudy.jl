@@ -320,6 +320,52 @@ function gap_alpha_sweep(trained; alphas = GAP_ALPHAS)
     return rows
 end
 
+"""
+`rate` smoothed by a centred moving average of `window` samples taken in
+regulator order. `window = 1` returns the rate unchanged.
+"""
+function gap_smooth_rate(rate, r; window::Int = 5)
+    window ≤ 1 && return collect(float.(rate))
+    order = sortperm(collect(float.(r)))
+    values = collect(float.(rate))[order]
+    n = length(values)
+    half = window ÷ 2
+    smoothed = similar(values)
+    for i in eachindex(values)
+        lo = max(1, i - half)
+        hi = min(n, i + half)
+        smoothed[i] = sum(view(values, lo:hi)) / (hi - lo + 1)
+    end
+    out = similar(values)
+    out[order] = smoothed
+    return out
+end
+
+"""
+Does smoothing the learned rate remove the extra terms? The premise of a
+roughness penalty on the rate is that the extras describe roughness the true
+law does not have. If smoothing the rate a training already produced does not
+change the discovered support, no penalty that acts on roughness can, and the
+penalty need not be built to be ruled out.
+"""
+function gap_smoothing_sweep(trained; windows = (1, 3, 5, 9, 15, 25))
+    r = vec(trained.X[trained.truth.variable, :])
+    learned = vec(trained.D)
+    truth_rate = gap_true_rate(trained)
+    rows = NamedTuple[]
+    for window in windows
+        rate = gap_smooth_rate(learned, r; window)
+        discovery = gap_discover(trained, rate)
+        push!(rows,
+            (; trained.seed, trained.noise, window,
+                rate_error = rate_rel_rmse(rate, truth_rate),
+                moved = rate_rel_rmse(rate, learned),
+                discovery.support, discovery.support_f1,
+                discovery.support_recall, discovery.n_terms))
+    end
+    return rows
+end
+
 # -- The loss between two solutions --------------------------------------------
 
 """

@@ -104,6 +104,7 @@ struct TrainingConfig{T <: AbstractFloat, C <: AbstractConstraintStrategy, S, H}
     solver::S
     horizon_schedule::H
     frozen_phys::Vector{Symbol}
+    restarts::Int
 end
 
 """
@@ -166,7 +167,8 @@ function TrainingConfig(; adam_iterations::Int = 300,
         StructuralPositivity(),
         solver::SolverConfig = SolverConfig(),
         horizon_schedule = [0.25, 0.5, 1.0],
-        frozen_phys::Vector{Symbol} = Symbol[])
+        frozen_phys::Vector{Symbol} = Symbol[],
+        restarts::Int = 1)
     T = promote_type(typeof(float(adam_learning_rate)),
         typeof(float(gradient_clip)))
     resolved_schedule = if horizon_schedule isa HorizonCurriculum
@@ -174,10 +176,11 @@ function TrainingConfig(; adam_iterations::Int = 300,
     else
         T.(collect(horizon_schedule))
     end
+    restarts ≥ 1 || throw(ArgumentError("restarts must be at least 1; got $(restarts)"))
     return TrainingConfig(
         adam_iterations, T(adam_learning_rate), bfgs_iterations,
         T(gradient_clip), log_every, constraint, solver,
-        resolved_schedule, copy(frozen_phys))
+        resolved_schedule, copy(frozen_phys), restarts)
 end
 
 function TrainingConfig(base::TrainingConfig;
@@ -189,11 +192,12 @@ function TrainingConfig(base::TrainingConfig;
         constraint = base.constraint,
         solver = base.solver,
         horizon_schedule = base.horizon_schedule,
-        frozen_phys = base.frozen_phys)
+        frozen_phys = base.frozen_phys,
+        restarts = base.restarts)
     return TrainingConfig(;
         adam_iterations, adam_learning_rate, bfgs_iterations, gradient_clip,
         log_every, constraint, solver, horizon_schedule,
-        frozen_phys = copy(frozen_phys))
+        frozen_phys = copy(frozen_phys), restarts)
 end
 
 """Explicit polynomial STLSQ backend (`dx/dt = Φ(x)ξ`)."""

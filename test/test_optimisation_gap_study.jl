@@ -84,3 +84,62 @@ end
         @test !(name in names(HybridKinetics))
     end
 end
+
+@testset "restarts default to the single fit the package has always done" begin
+    # The fingerprint suite records outputs of the current training defaults,
+    # so the new option has to be inert until it is asked for.
+    @test TrainingConfig().restarts == 1
+    @test TrainingConfig(; restarts = 4).restarts == 4
+    @test TrainingConfig(TrainingConfig(; restarts = 4)).restarts == 4
+    @test TrainingConfig(TrainingConfig(); restarts = 7).restarts == 7
+    @test_throws ArgumentError TrainingConfig(; restarts = 0)
+    # the copy that lock_training_config makes must carry it through
+    net = HybridKinetics.build_hill_recovery_network(; known = false, hill_order = 2)
+    model, _ = build_ude_model(MersenneTwister(103), net)
+    locked = HybridKinetics.lock_training_config(model, TrainingConfig(; restarts = 5))
+    @test locked.restarts == 5
+end
+
+@testset "a restart redraws the network and keeps the physical guess" begin
+    net = HybridKinetics.build_hill_recovery_network(; known = false, hill_order = 2)
+    model, p0 = build_ude_model(MersenneTwister(103), net)
+    names = Tuple(parameter_schema(model).phys_names)
+    start = pack_parameters(
+        NamedTuple{names}(ntuple(_ -> 0.8, length(names))), p0.nn)
+    fresh = HybridKinetics._reinitialise_network(start, model, 7)
+    @test fresh.phys == start.phys
+    @test fresh.nn != start.nn
+    @test length(fresh) == length(start)
+    # the same seed gives the same draw, so a set of restarts is reproducible
+    @test vec(HybridKinetics._reinitialise_network(start, model, 7)) == vec(fresh)
+    @test vec(HybridKinetics._reinitialise_network(start, model, 8)) != vec(fresh)
+end
+
+@testset "restarts keep the lowest loss and report every attempt" begin
+    net = HybridKinetics.build_hill_recovery_network(; known = false, hill_order = 2)
+    truth_net = HybridKinetics.build_hill_recovery_network(; known = true, hill_order = 2)
+    model, p0 = build_ude_model(MersenneTwister(103), net)
+    names = Tuple(parameter_schema(model).phys_names)
+    start = pack_parameters(
+        NamedTuple{names}(ntuple(_ -> 0.8, length(names))), p0.nn)
+    budget = HybridKinetics.LIBRARY_STUDY_TWO_STATE_BUDGET.smoke
+    set = HybridKinetics.generate_recovery_experiments(
+        MersenneTwister(103), truth_net, HybridKinetics.LIBRARY_STUDY_TWO_STATE_PARAMS;
+        tspan = budget.tspan, n_points = budget.n_points, noise_σ = 0.0)
+    split = HybridKinetics.reference_protocol_experiment_split(set)
+    config = HybridKinetics.lock_training_config(model,
+        HybridKinetics.reference_protocol_training_config(;
+            adam_iterations = budget.adam_iterations,
+            bfgs_iterations = budget.bfgs_iterations, model = model))
+    once = HybridKinetics.train_experiments_with_warmup(start, split.train, model;
+        config = config, verbose = false)
+    thrice = HybridKinetics.train_experiments_with_warmup(start, split.train, model;
+        config = TrainingConfig(config; restarts = 3), verbose = false)
+    losses = thrice.metadata.config.restart_losses
+    @test length(losses) == 3
+    @test thrice.final_loss == minimum(losses)
+    # restart one is the fit the package would have done on its own, so the
+    # option can only ever improve on it
+    @test losses[1] == once.final_loss
+    @test thrice.final_loss ≤ once.final_loss
+end
