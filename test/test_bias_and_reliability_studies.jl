@@ -94,3 +94,77 @@ end
         @test !(name in names(HybridKinetics))
     end
 end
+
+@testset "the denominator report reaches past the samples" begin
+    # The divergence question asks whether the candidate alone says the
+    # resimulation will fail. The report must therefore look where the
+    # resimulation can go, not only where the fit was made.
+    candidate = HybridKinetics.synthetic_near_zero_implicit_candidate()
+    X = reshape(collect(range(0.1, 0.5; length = 25)), 1, :)
+    near = HybridKinetics.reliability_denominator_report(candidate, X; margin = 0.5)
+    # D = 1 - r on [0.1, 0.5]: smallest value 0.5, nothing to warn about.
+    @test near.min_samples≈0.5 atol=1e-12
+    @test near.min_box≈0.5 atol=1e-12
+    @test !near.sign_change_box
+    @test !near.sign_change_extended
+    far = HybridKinetics.reliability_denominator_report(candidate, X; margin = 1.5)
+    # Widened to [0, 1.1] the root at r = 1 is inside, and only the widened
+    # grid sees it.
+    @test far.min_box≈0.5 atol=1e-12
+    @test far.min_extended < 0
+    @test !far.sign_change_box
+    @test far.sign_change_extended
+    # The lower edge is never pushed below zero, which no concentration reaches.
+    safe = HybridKinetics.reliability_denominator_report(
+        HybridKinetics.synthetic_safe_implicit_candidate(), X; margin = 5.0)
+    @test safe.min_extended == 1.0
+end
+
+@testset "a run with no candidate is neither a divergence nor a run that was fine" begin
+    rows = [(; success = true, diverged = true, denominator_min_box = 0.05,
+            denominator_min_extended = -0.2, sign_change_box = false,
+            sign_change_extended = true, negative_rate_box = false),
+        (; success = true, diverged = false, denominator_min_box = 0.9,
+            denominator_min_extended = 0.8, sign_change_box = false,
+            sign_change_extended = false, negative_rate_box = false),
+        (; success = false, diverged = false, denominator_min_box = NaN,
+            denominator_min_extended = NaN, sign_change_box = false,
+            sign_change_extended = false, negative_rate_box = false)]
+    checks = HybridKinetics.reliability_audit_summary(rows)
+    @test first(checks).caught == 1
+    for check in checks[2:end]
+        @test check.of == 1
+        @test check.of_fine == 1
+    end
+    widened = only(c for c in checks if c.name == "sign change on the widened box")
+    @test widened.caught == 1
+    @test widened.false_alarms == 0
+end
+
+@testset "the grid of the report fits the point budget" begin
+    grid = HybridKinetics._reliability_grid([0.1, 0.2], [0.5, 0.6], 21, 400_000)
+    @test size(grid) == (2, 441)
+    @test minimum(grid[1, :])≈0.1 atol=1e-12
+    @test maximum(grid[2, :])≈0.6 atol=1e-12
+    @test size(HybridKinetics._reliability_grid(zeros(5), ones(5), 21, 1000), 2) ≤ 1000
+    # A coordinate that never moves, as in the constant sample design, gives a
+    # grid and not an error.
+    flat = HybridKinetics._reliability_grid([0.4], [0.4], 5, 100)
+    @test all(flat .== 0.4)
+end
+
+@testset "hiding observations leaves the regulator a grid to span" begin
+    # Blanking a whole state leaves `_regulator_grid` nothing finite to work
+    # with, so the masked warm-up would measure the absence of a regulator.
+    # The study hides every second observation instead.
+    trained = HybridKinetics.reliability_train(;
+        seed = 103, init_seed = 103, noise_σ = 0.0, mask_state = 2,
+        warmup_scale = 1, kind = :smoke)
+    @test isfinite(trained.training.final_loss)
+    @test all(isfinite, trained.X)
+    @test all(isfinite, trained.D)
+    hidden = sum(count(isnan, e.observations[2, :]) for e in trained.train_set.experiments)
+    total = sum(size(e.observations, 2) for e in trained.train_set.experiments)
+    @test 0 < hidden < total
+    @test all(any(isfinite, e.observations[2, :]) for e in trained.train_set.experiments)
+end
