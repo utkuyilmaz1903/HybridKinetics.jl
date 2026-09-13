@@ -487,6 +487,124 @@ that the regression prefers over the exact form at threshold 1e-3; they
 are not removed by the scale, and #57 stays open with these numbers. Same
 environment as the rest of the page; run 2026-09-06.
 
+### Why the extra terms survive
+
+The 0.18 milestone asked the question again, with four hypotheses fixed in
+advance and the criterion for each written down before the runs. Every
+hypothesis is measured on the samples of one training, so what varies is the
+discovery step and not the training: `benchmark/extra_terms_study.jl`, both
+fixtures, seeds 103, 107, 111, 113, 127, noise 0.0, 0.02 and 0.05, 30 cells
+and 2310 rows in `benchmark/results/extra_terms_study.csv`.
+
+**What the truth is.** Before any of it, the labelling itself was checked.
+The library of the reference configuration is the numerator `1`, `R`, `R^2`
+and the denominator `R`, `R^2`; the denominator carries no constant because
+`D(0) = 1` is the implicit normalisation of the implicit form. The true Hill
+law `vmax R^2 / (K^2 + R^2)` is `(vmax/K^2) R^2 / (1 + (1/K^2) R^2)` in that
+normalisation, so its support is `R^2` in the numerator and `R^2` in the
+denominator, which is exactly what `hill_rate_support(2)` records. A
+candidate carrying that support and those coefficients reproduces the true
+law to 1e-12 and scores F1 1.0, so the metric's ceiling is attainable; the
+test suite checks both. The recorded truth is therefore right and the extra
+terms are real. The reference fit keeps all five library terms in 30 of 30
+runs, which is two true positives and three false positives: recall 1.0,
+precision 0.4, F1 4/7 = 0.571, the published number.
+
+**The extra terms are not small.** No threshold below 0.2 removes anything,
+in any run of either fixture: the coefficients of `1` and of `R` are of the
+same order as those of the true terms. That is why the sparsity threshold,
+at its reference value of 1e-3, never had a chance to act.
+
+| sparsity threshold | true support recovered, two-state | four-state | median F1 | runs losing recall |
+|---|---|---|---|---|
+| 1e-3 (the reference) | 0 of 15 | 0 of 15 | 0.571 | 0 |
+| 0.05 | 0 of 15 | 0 of 15 | 0.571 | 2 |
+| 0.2 | 0 of 15 | 0 of 15 | 0.571 | 4 |
+| 0.3 | 2 of 15 | 3 of 15 | 0.800 | 6 |
+| 0.75 | 4 of 15 | 7 of 15 | 0.800 | 9 |
+| 1.0 | 5 of 15 | 7 of 15 | 0.800 | 13 |
+| 1.5 | 11 of 15 | 7 of 15 | 1.000 | 12 |
+| 3.0 | 7 of 15 | 0 of 15 | 0.000 | 23 |
+
+By the time a threshold removes the extra terms it is also removing true
+ones: at 1.5, the best value, 12 of 30 runs have lost a true monomial.
+
+**What the extra terms are doing (hypothesis 1.1, ablation).** Each accepted
+term was removed in turn and the remaining coefficients refitted on the same
+rows, recording what the removal costs against the learned rate, against the
+true Hill law, and on the held-out experiments.
+
+| fixture | removed | runs | regression residual | error against the true rate | held-out residual |
+|---|---|---|---|---|---|
+| two-state | an extra term | 45 | x3.62 | x0.877 | x1.005 |
+| two-state | a true term | 30 | x20.01 | x1.093 | x1.244 |
+| four-state | an extra term | 45 | x7.02 | x0.981 | x1.044 |
+| four-state | a true term | 30 | x21.68 | x1.015 | x1.177 |
+
+Every figure is the median ratio to the same run with nothing removed. The
+two kinds of term behave differently in a way that answers the question:
+removing an **extra** term costs three to seven times the regression
+residual but leaves the fit to the **true** rate unchanged or better (0.877
+and 0.981) and the held-out residual essentially unchanged; removing a
+**true** term costs twenty times the residual and makes the fit to the true
+rate and the held-out residual worse. So the extra terms are doing real work
+— they are not nuisance terms the fit could simply drop — but the work they
+do is describing the gap between the trained network's rate and the true
+law, not the mechanism. The pre-registered confirmation asked for a residual
+growth of at least ten times with the true-rate error within 5 per cent, in
+at least 12 of 15 runs per fixture: the direction holds in exactly 12 of 15
+on both fixtures, and the tenfold magnitude in 0 of 15 and 1 of 15. The
+criterion as written is therefore not met; the quantity that separates the
+two kinds of term cleanly is not the size of the residual growth but its
+sign against the true rate, which was not what the criterion was written
+around.
+
+**Selection rules (hypothesis 1.2).** The sparsity threshold was swept over
+sixteen values and the model selected by AIC, by BIC and by the knee of the
+(term count, residual) front.
+
+| rule | recovers the true support | median terms kept |
+|---|---|---|
+| AIC | 1 of 30 | 5 |
+| BIC | 1 of 30 | 5 |
+| knee of the front | 12 of 30 | 2 |
+
+AIC and BIC keep the whole library in 29 of 30 runs, for the reason
+anticipated when the hypothesis was written: the full model fits the learned
+rate almost exactly, so the log-residual term dominates any complexity
+penalty. The knee does much better and is still far from the pre-registered
+14 of 15 on both fixtures. **Refuted.**
+
+**Separate thresholds (hypothesis 1.3).** A 7x7 grid of numerator and
+denominator thresholds. The best pairs, `num 1.0 den 1.0` and `num 1.0 den
+0.5`, recover the true support in 12 of 30 runs and lose recall in 13. No
+pair reaches the pre-registered 14 of 15 on both fixtures. **Refuted.** The
+sub-case "do not sparsify the denominator's normalisation term" does not
+arise: the denominator library has no constant to sparsify.
+
+**Derivative rows (hypothesis 1.4).** Differentiating the implicit identity
+gives rows linear in the same coefficients, so the derivative of the learned
+rate — estimated by central differences on the samples sorted by the
+regulator, at no cost in samples or training — can be added to the
+regression. It changes nothing: 0 of 30 runs recover the true support at any
+of the three thresholds tried, and the median F1 stays at 0.571. **Refuted.**
+
+**What is now known.** In 23 of 30 runs some threshold on the sweep does
+reach F1 1.0, so the information needed to separate the true terms from the
+extra ones is present in the front; none of the three rules extracts it
+reliably. And the runs where a rule does succeed are not the runs where the
+learned rate is closer to the truth — the median error of the fitted rate
+against the true law is 0.058 where the knee succeeds and 0.046 where it
+fails — so "train better and the extras will go" is not supported by these
+runs either. The support F1 of 0.571 is best read as a measure of how far
+the learned rate sits from the true law in the library's basis, not as a
+property of the discovery step's sparsity; no discovery-side change tested
+here raises it without costing recall, and none is adopted.
+
+Environment: Julia 1.10.12, OrdinaryDiffEq 7.8.1, SciMLSensitivity 7.119.3,
+Lux 1.31.4, Optimization 5.9.0, Zygote 0.7.13, SciMLBase 3.51.0,
+HybridKinetics 0.18.0, four cores, 2026-09-13.
+
 ## Two unknown terms
 
 The 0.16 study asks one question with data: when two unknown destruction
