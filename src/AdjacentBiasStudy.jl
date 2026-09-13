@@ -439,7 +439,8 @@ end
 function adjacent_csv_line(row)
     values = map(ADJACENT_COLUMNS) do column
         value = getproperty(row, column)
-        value isa AbstractString || value isa Symbol ? string(value) :
+        # commas would break the row, so text fields carry none
+        value isa AbstractString || value isa Symbol ? replace(string(value), "," => ";") :
         value isa Integer ? string(value) : string(Float64(value))
     end
     return join(values, ",")

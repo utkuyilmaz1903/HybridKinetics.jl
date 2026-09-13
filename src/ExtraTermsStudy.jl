@@ -536,7 +536,8 @@ end
 function extra_terms_csv_line(row)
     values = map(EXTRA_TERMS_COLUMNS) do column
         value = getproperty(row, column)
-        value isa AbstractString || value isa Symbol ? string(value) :
+        # commas would break the row, so text fields carry none
+        value isa AbstractString || value isa Symbol ? replace(string(value), "," => ";") :
         value isa Bool ? string(value) :
         value isa Integer ? string(value) : string(Float64(value))
     end
