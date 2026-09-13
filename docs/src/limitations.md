@@ -63,10 +63,25 @@ destruction term. This page collects every caveat in one place.
 
 - **The discovered form is a rational function, not a canonical Hill law.**
   The reference protocol recovers the true monomials of the Hill term (the
-  acceptance criterion is recall of at least 0.99), but nuisance terms remain,
-  typically a constant and a linear term. Combined support F1 is scored
-  against a floor of 0.50; it is not an acceptance criterion. The package does
-  not turn the neural term into a Hill expression with named parameters.
+  acceptance criterion is recall of at least 0.99), but extra terms remain,
+  a constant and a linear term. Combined support F1 is scored against a floor
+  of 0.50; it is not an acceptance criterion. The package does not turn the
+  neural term into a Hill expression with named parameters.
+- **What the support F1 of 0.57 measures.** It is not a mislabelled truth and
+  not an unattainable ceiling: a candidate carrying exactly the recorded true
+  support reproduces the Hill law to 1e-12 and scores 1.0, which the test
+  suite checks. The extra terms carry coefficients of the same order as the
+  true ones — no sparsity threshold below 0.2 removes anything, and one large
+  enough to remove them also removes true monomials — and they describe the
+  gap between the trained network's rate and the true law rather than the
+  mechanism: removing one costs three to seven times the regression residual
+  while leaving the fit to the true rate unchanged or better, where removing a
+  true term costs twenty times and makes it worse. Read the 0.57 as a measure
+  of how far the learned rate sits from the true law in the library's basis.
+  Information criteria, separate numerator and denominator thresholds, and
+  derivative rows were all tested in 0.18 and none of them helps; the numbers
+  are under "Why the extra terms survive" on the
+  [Benchmarks](benchmarks.md#Why-the-extra-terms-survive) page.
 - **Michaelis-Menten unknown terms** are checked on the neural-rate error and
   the residual only; canonical Michaelis-Menten support from the trained
   network is not claimed.
@@ -85,6 +100,24 @@ destruction term. This page collects every caveat in one place.
 - A multi-seed robustness study of the full protocol is not implemented.
   `benchmark/recovery_seeds.jl --ude` runs the protocol on five seeds as a
   report; the continuous-integration check uses seeds 103 and 104.
+- How much one run varies is measured (0.18 study, benchmarks page). Over ten
+  random initialisations of the neural term on the same data, five seeds and
+  fifty runs, the discovered support is the same every time, while the final
+  training loss spans a factor of 6 to 90 within a seed and the learned-rate
+  error runs from 0.022 to 0.084. One run's loss is one draw from that
+  spread. The warm-up length matters less than the draw: the package's
+  length, twice it and none at all differ by less than the spread between
+  initialisations, although dropping the warm-up entirely is the only setting
+  in which two seeds disagree about the support.
+- The hybrid model built from the discovered rate resimulated in all 15 runs
+  of the reference protocol at noise 0, 0.02 and 0.05, and in all 60 runs of
+  the four-state fixture's default sample design at 0.05. The runs that do
+  not resimulate, in the stored studies, belong to the constant sample design
+  at 0.05 noise, which has not been the default since 0.12. Their candidates
+  have a denominator identically 1, so the denominator-safety check cannot
+  flag them and no candidate-only check was added: the quantity that does
+  separate them, a rate that turns negative outside the sampled range, also
+  flags 75 of 232 runs that resimulated without trouble.
 
 ## Extensions and integrations
 
@@ -119,7 +152,22 @@ destruction term. This page collects every caveat in one place.
   `CROSS_TERM_COLLINEARITY_THRESHOLD` = 0.46, the value below which no run
   of the study showed a measurable cost; it is local to the fit,
   concerns the scales only, does not say which of the two terms drifted,
-  and is not a structural result.
+  and is not a structural result. The 0.18 study asked what that bias is:
+  pre-training both terms to their true rates and then fitting with the
+  normal settings leaves the biased term at under a fifth of its usual bias
+  in 5 of 5 seeds, at about a tenth of the final training loss, so the data
+  support a fit within 1 per cent of the truth on the median and 5 per cent
+  at worst, and the joint search does not find it. That
+  is a diagnosis and not a remedy — a user has no true rates — and the three
+  corrections that were measured do not help: weighting each node's residual
+  by its observed variance makes the bias larger, fitting one term first and
+  freezing it moves the bias onto whichever term is fitted second in either
+  ordering, and the residual surface over the two rates' scales shows their
+  ratio about six times better determined than their common scale, so a
+  constraint on the product would act where the data are already
+  informative. The 15 to 30 per cent figure therefore stands as the measured
+  cost, now known to be a property of the optimiser's path rather than a
+  limit of the data (0.18 study, benchmarks page).
 - The number of terms is not limited by the code. Two terms were measured
   in full; the three-term fixture ran at noise 0.0 only (its noisy cells
   were dropped at the study's budget). There, the adjacent pair came out

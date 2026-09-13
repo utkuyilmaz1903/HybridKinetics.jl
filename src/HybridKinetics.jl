@@ -6,7 +6,7 @@
 ###############################################################################
 module HybridKinetics
 
-const PACKAGE_VERSION = v"0.17.2"
+const PACKAGE_VERSION = v"0.18.0"
 
 # -- External dependencies ----------------------------------------------------
 using Dates
@@ -72,7 +72,10 @@ include("GraphLocalLibrary.jl")
 include("TrainedGraphLocal.jl")
 include("LibraryComparisonStudy.jl")
 include("DiscoverUnknownTerm.jl")
+include("ExtraTermsStudy.jl")
+include("ReliabilityStudy.jl")
 include("MultiTermStudy.jl")
+include("AdjacentBiasStudy.jl")
 include("DenominatorDomain.jl")
 include("ParameterSchemaPack.jl")
 include("Bridge.jl")

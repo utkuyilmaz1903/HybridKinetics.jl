@@ -109,6 +109,14 @@ warm-up (one term at a time) was not adopted because it would change the
 single-term path and because nothing in the two-term study needed it; the
 option remains open if a fixture calls for it.
 
+**How long the warm-up is.** Its length was measured at zero, at the
+package's value and at twice it, on fully observed data and with half of one
+state's observations hidden. The three settings differ by less than the
+spread that ten random initialisations of the same data produce, so the
+current length is a reasonable default rather than a tuned one; dropping the
+warm-up entirely is the only setting in which two seeds disagree about the
+discovered support ([Benchmarks](benchmarks.md#How-much-one-run-varies)).
+
 ## Identifiability diagnostic
 
 With observed concentrations alone, a production rate and the scale of the

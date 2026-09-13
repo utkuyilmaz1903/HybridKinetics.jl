@@ -70,6 +70,9 @@ rate.
 | `benchmark/scale_basis.jl` | library size versus node count | no |
 | `benchmark/library_comparison_study.jl` | the library comparison study: five seeds, three noise levels, three libraries; resumable CSV output and a summary table | weekly |
 | `benchmark/plot_library_comparison.jl` | figure of support F1 against noise per library from the study CSV (needs Plots) | no |
+| `benchmark/extra_terms_study.jl` | four explanations for the extra terms that survive the reference discovery, measured on one training's samples | no |
+| `benchmark/adjacent_bias_study.jl` | the adjacent-node bias under the joint fit, a true-rate start, sequential training in both orderings and variance weighting; `--scan` for the scale surface | no |
+| `benchmark/reliability_study.jl` | the initialisation spread, the warm-up length, and the audit of runs whose hybrid model will not resimulate | no |
 | `benchmark/allocation_check.jl` | allocation count of the in-place right-hand side | yes |
 | `benchmark/probe_datadriven.jl` | checks whether DataDrivenSparse resolves in an isolated environment | yes, allowed to fail |
 
@@ -487,6 +490,124 @@ that the regression prefers over the exact form at threshold 1e-3; they
 are not removed by the scale, and #57 stays open with these numbers. Same
 environment as the rest of the page; run 2026-09-06.
 
+### Why the extra terms survive
+
+The 0.18 milestone asked the question again, with four hypotheses fixed in
+advance and the criterion for each written down before the runs. Every
+hypothesis is measured on the samples of one training, so what varies is the
+discovery step and not the training: `benchmark/extra_terms_study.jl`, both
+fixtures, seeds 103, 107, 111, 113, 127, noise 0.0, 0.02 and 0.05, 30 cells
+and 2310 rows in `benchmark/results/extra_terms_study.csv`.
+
+**What the truth is.** Before any of it, the labelling itself was checked.
+The library of the reference configuration is the numerator `1`, `R`, `R^2`
+and the denominator `R`, `R^2`; the denominator carries no constant because
+`D(0) = 1` is the implicit normalisation of the implicit form. The true Hill
+law `vmax R^2 / (K^2 + R^2)` is `(vmax/K^2) R^2 / (1 + (1/K^2) R^2)` in that
+normalisation, so its support is `R^2` in the numerator and `R^2` in the
+denominator, which is exactly what `hill_rate_support(2)` records. A
+candidate carrying that support and those coefficients reproduces the true
+law to 1e-12 and scores F1 1.0, so the metric's ceiling is attainable; the
+test suite checks both. The recorded truth is therefore right and the extra
+terms are real. The reference fit keeps all five library terms in 30 of 30
+runs, which is two true positives and three false positives: recall 1.0,
+precision 0.4, F1 4/7 = 0.571, the published number.
+
+**The extra terms are not small.** No threshold below 0.2 removes anything,
+in any run of either fixture: the coefficients of `1` and of `R` are of the
+same order as those of the true terms. That is why the sparsity threshold,
+at its reference value of 1e-3, never had a chance to act.
+
+| sparsity threshold | true support recovered, two-state | four-state | median F1 | runs losing recall |
+|---|---|---|---|---|
+| 1e-3 (the reference) | 0 of 15 | 0 of 15 | 0.571 | 0 |
+| 0.05 | 0 of 15 | 0 of 15 | 0.571 | 2 |
+| 0.2 | 0 of 15 | 0 of 15 | 0.571 | 4 |
+| 0.3 | 2 of 15 | 3 of 15 | 0.800 | 6 |
+| 0.75 | 4 of 15 | 7 of 15 | 0.800 | 9 |
+| 1.0 | 5 of 15 | 7 of 15 | 0.800 | 13 |
+| 1.5 | 11 of 15 | 7 of 15 | 1.000 | 12 |
+| 3.0 | 7 of 15 | 0 of 15 | 0.000 | 23 |
+
+By the time a threshold removes the extra terms it is also removing true
+ones: at 1.5, the best value, 12 of 30 runs have lost a true monomial.
+
+**What the extra terms are doing (hypothesis 1.1, ablation).** Each accepted
+term was removed in turn and the remaining coefficients refitted on the same
+rows, recording what the removal costs against the learned rate, against the
+true Hill law, and on the held-out experiments.
+
+| fixture | removed | runs | regression residual | error against the true rate | held-out residual |
+|---|---|---|---|---|---|
+| two-state | an extra term | 45 | x3.62 | x0.877 | x1.005 |
+| two-state | a true term | 30 | x20.01 | x1.093 | x1.244 |
+| four-state | an extra term | 45 | x7.02 | x0.981 | x1.044 |
+| four-state | a true term | 30 | x21.68 | x1.015 | x1.177 |
+
+Every figure is the median ratio to the same run with nothing removed. The
+two kinds of term behave differently in a way that answers the question:
+removing an **extra** term costs three to seven times the regression
+residual but leaves the fit to the **true** rate unchanged or better (0.877
+and 0.981) and the held-out residual essentially unchanged; removing a
+**true** term costs twenty times the residual and makes the fit to the true
+rate and the held-out residual worse. So the extra terms are doing real work
+— they are not nuisance terms the fit could simply drop — but the work they
+do is describing the gap between the trained network's rate and the true
+law, not the mechanism. The pre-registered confirmation asked for a residual
+growth of at least ten times with the true-rate error within 5 per cent, in
+at least 12 of 15 runs per fixture: the direction holds in exactly 12 of 15
+on both fixtures, and the tenfold magnitude in 0 of 15 and 1 of 15. The
+criterion as written is therefore not met; the quantity that separates the
+two kinds of term cleanly is not the size of the residual growth but its
+sign against the true rate, which was not what the criterion was written
+around.
+
+**Selection rules (hypothesis 1.2).** The sparsity threshold was swept over
+sixteen values and the model selected by AIC, by BIC and by the knee of the
+(term count, residual) front.
+
+| rule | recovers the true support | median terms kept |
+|---|---|---|
+| AIC | 1 of 30 | 5 |
+| BIC | 1 of 30 | 5 |
+| knee of the front | 12 of 30 | 2 |
+
+AIC and BIC keep the whole library in 29 of 30 runs, for the reason
+anticipated when the hypothesis was written: the full model fits the learned
+rate almost exactly, so the log-residual term dominates any complexity
+penalty. The knee does much better and is still far from the pre-registered
+14 of 15 on both fixtures. **Refuted.**
+
+**Separate thresholds (hypothesis 1.3).** A 7x7 grid of numerator and
+denominator thresholds. The best pairs, `num 1.0 den 1.0` and `num 1.0 den
+0.5`, recover the true support in 12 of 30 runs and lose recall in 13. No
+pair reaches the pre-registered 14 of 15 on both fixtures. **Refuted.** The
+sub-case "do not sparsify the denominator's normalisation term" does not
+arise: the denominator library has no constant to sparsify.
+
+**Derivative rows (hypothesis 1.4).** Differentiating the implicit identity
+gives rows linear in the same coefficients, so the derivative of the learned
+rate — estimated by central differences on the samples sorted by the
+regulator, at no cost in samples or training — can be added to the
+regression. It changes nothing: 0 of 30 runs recover the true support at any
+of the three thresholds tried, and the median F1 stays at 0.571. **Refuted.**
+
+**What is now known.** In 23 of 30 runs some threshold on the sweep does
+reach F1 1.0, so the information needed to separate the true terms from the
+extra ones is present in the front; none of the three rules extracts it
+reliably. And the runs where a rule does succeed are not the runs where the
+learned rate is closer to the truth — the median error of the fitted rate
+against the true law is 0.058 where the knee succeeds and 0.046 where it
+fails — so "train better and the extras will go" is not supported by these
+runs either. The support F1 of 0.571 is best read as a measure of how far
+the learned rate sits from the true law in the library's basis, not as a
+property of the discovery step's sparsity; no discovery-side change tested
+here raises it without costing recall, and none is adopted.
+
+Environment: Julia 1.10.12, OrdinaryDiffEq 7.8.1, SciMLSensitivity 7.119.3,
+Lux 1.31.4, Optimization 5.9.0, Zygote 0.7.13, SciMLBase 3.51.0,
+HybridKinetics 0.18.0, four cores, 2026-09-13.
+
 ## Two unknown terms
 
 The 0.16 study asks one question with data: when two unknown destruction
@@ -668,6 +789,233 @@ the discovered coefficients of that pair need another look. Before the
 three-term rows came in, the two-term fixtures alone would have put the
 threshold at 0.69, the midpoint of their gap; the three-term fixture showed
 a measurable cost below that, which is why the lower value is used.
+
+### Where the adjacent-node bias comes from
+
+Two unknown terms on adjacent nodes leave one term's learned rate biased low
+(above, median 16 per cent in 5 of 5 seeds). The 0.18 milestone asked whether
+that is a property of the data or of the search, and then measured three
+corrections, each with its criterion written down before the run. Every row
+below is one unknown term of one training of the coupled fixture at noise 0,
+seeds 103, 107, 111, 113 and 127, scored exactly as the 0.16 study scores it:
+the signed relative bias is the mean of `(learned - true) / true` over the
+regulator grid.
+
+**Which term is downstream cannot be read off the graph.** In the coupled
+fixture each unknown node regulates the other's term, so the topology is
+symmetric; what breaks the symmetry is the parameters, which a user does not
+have for an unknown term. The study reports both terms as "regulated by the
+other unknown", `adjacent_ordering_is_graph_readable` returns false, and the
+sequential experiment below is run in both orderings rather than assuming
+one. Node B is named here as the node the joint fit leaves biased, which is
+an observation about these runs, not something a user could predict.
+
+**Optimisation, not identifiability.** Both neural terms were pre-trained to
+their true rates on the sampling grid and then trained with the normal joint
+settings.
+
+| setting | node A bias | node B bias | node A rate error | node B rate error | final loss |
+|---|---|---|---|---|---|
+| joint, the package's own path | -0.014 | -0.160 | 0.138 | 0.164 | 1.0e-4 |
+| started at the true rates | +0.008 | +0.008 | 0.013 | 0.032 | 1.1e-5 |
+
+Medians over the five seeds; the cross-term collinearity is 0.96 in every run
+of both settings. The two pre-registered criteria were: the bias returns to
+within 5 percentage points of the joint bias in at least 4 of 5 seeds
+(a property of the data), or it stays under a third of it in at least 4 of 5
+seeds (a property of the search). Node B's bias is 0.19, 0.02, 0.16, 0.05 and
+0.09 of its joint value, so **5 of 5 seeds meet the second criterion and 0 of
+5 meet the first**. The joint fit also stops at about ten times the final
+training loss reached from the true rates. The data support a nearly unbiased
+fit of both terms; the joint search does not find it. Starting from the true
+rates is not something a user can do, so this is a diagnosis and not a
+remedy.
+
+**Sequential training.** The pre-registered procedure trains one term with
+the other node's mechanism known at its true values, freezes the rate it
+learned, and trains the remaining term against it. Both orderings were run.
+
+| trained first | node | role | bias median | bias range | runs under 5% |
+|---|---|---|---|---|---|
+| A | A | trained first, then frozen | +0.096 | [-0.012, +0.198] | 2 of 5 |
+| A | B | trained second | -0.066 | [-0.171, -0.058] | 0 of 5 |
+| B | B | trained first, then frozen | +0.003 | [-0.006, +0.030] | 5 of 5 |
+| B | A | trained second | +0.083 | [+0.052, +0.128] | 0 of 5 |
+
+Read against the pre-registered criterion — the median bias of the biased
+node below 5 per cent in at least 4 of 5 seeds — training node B first
+**meets it, 5 of 5**, and training node A first does not, 0 of 5. Read
+against what the runs show, the criterion measured the wrong thing: the bias
+does not go away, it moves to whichever term is fitted second. Training B
+first takes node B from -0.160 to +0.003 and puts node A, which the joint fit
+left at -0.014, at +0.083. Both readings are reported because the criterion
+was fixed in advance and the observation contradicts what it was meant to
+capture. The procedure is in any case not available to a user with two
+unknown terms: its first step needs the other node's true mechanism, and
+nothing tells the user which ordering to use.
+
+**Loss weighting.** Each node's residual was weighted by the inverse of that
+state's observed variance (0.554, 0.433, 1.0 on this fixture), expressed as
+one single-state replica experiment per state so that the trainer's own
+`metadata[:weight]` carries it. Node B's bias grows: median -0.247 against
+-0.160, range -0.309 to -0.213, and its rate error rises from 0.164 to 0.236.
+**0 of 5 seeds meet the criterion. Refuted.**
+
+**Scale coupling.** A neural destruction term has no scale parameter to
+constrain: `NeuralDestructionTerm.scale` is a compile-time constant read off
+the stoichiometry, and the scale of the rate lives inside the network's
+output, so constraining the product of the two scales would mean adding a
+penalty term to the loss. Before building one, the held-out residual of the
+trained pair was measured with each learned rate multiplied by a constant,
+over a 5x5 grid of factors from 0.8 to 1.25.
+
+| seed | at (1, 1) | both x1.1 | both x0.9 | A x1.1, B x0.9 | A x0.9, B x1.1 |
+|---|---|---|---|---|---|
+| 103 | 0.0072 | 0.0171 | 0.0176 | 0.0892 | 0.1083 |
+| 107 | 0.0091 | 0.0169 | 0.0166 | 0.0926 | 0.1196 |
+| 111 | 0.0054 | 0.0174 | 0.0152 | 0.0891 | 0.1114 |
+| 113 | 0.0029 | 0.0191 | 0.0158 | 0.0839 | 0.1090 |
+| 127 | 0.0031 | 0.0156 | 0.0177 | 0.0849 | 0.1106 |
+
+The trained pair sits at the minimum of the grid in all five seeds. Moving
+both rates together by 10 per cent costs about 2.4 times the residual; moving
+them 10 per cent in opposite directions costs about 13 times, a ratio of 5.5
+to 6.3. The **ratio** of the two scales is therefore the well-determined
+direction and their common scale the shallow one, so a constraint on the
+product would act where the data are already informative. The bias measured
+above lies in that same well-determined direction — node B down, node A
+unchanged — which the data penalise by an order of magnitude, and the joint
+fit stops there anyway. That is further evidence for the reading above and
+against a scale-coupling explanation, so no constrained fit was built; what
+is reported is that the pre-registered correction targets the wrong
+direction.
+
+Environment: Julia 1.10.12, OrdinaryDiffEq 7.8.1, SciMLSensitivity 7.119.3,
+Lux 1.31.4, Optimization 5.9.0, Zygote 0.7.13, SciMLBase 3.51.0,
+HybridKinetics 0.18.0, four cores, 2026-09-13.
+
+### How much one run varies
+
+Three questions a user should be able to answer about a single run: whether
+the answer depends on the random initialisation, whether the hybrid model
+resimulates, and whether the warm-up length is a good default. All are
+measured on the two-state reference protocol with the data seed and the
+initialisation seed separated, which the package's own path ties together;
+`reliability_matches_package` checks that the separated path reproduces
+`fit_unknown_destruction` exactly at the package's warm-up, and the learned
+rates agree to the last bit.
+
+**The random initialisation.** Ten initialisations of the neural term on the
+same data, five seeds, 50 runs.
+
+| seed | runs | final loss median | loss spread within the seed | learned-rate error median | error range | distinct supports |
+|---|---|---|---|---|---|---|
+| 103 | 10 | 2.52e-6 | x6 | 0.044 | 0.036 to 0.052 | 1 |
+| 107 | 10 | 2.57e-6 | x6 | 0.040 | 0.031 to 0.051 | 1 |
+| 111 | 10 | 3.14e-6 | x11 | 0.042 | 0.034 to 0.065 | 1 |
+| 113 | 10 | 2.25e-6 | x11 | 0.039 | 0.033 to 0.084 | 1 |
+| 127 | 10 | 2.74e-6 | x90 | 0.043 | 0.022 to 0.075 | 1 |
+
+All 50 runs recover the same support, `1`, `R`, `R^2` in the numerator and
+`R`, `R^2` in the denominator, so the pre-registered confirmation — one
+support in at least 9 of 10 for every seed — holds at 10 of 10 for all five.
+What moves is the numbers: the final training loss spans a factor of 6 to 90
+within a seed and the learned-rate error runs from 0.022 to 0.084 across the
+50 runs. One run's loss is one draw from that spread and should not be read
+as a property of the data.
+
+**Where the divergences are, and what predicts them.** Some runs of the
+stored studies produce a hybrid model that cannot be resimulated: the
+discovered rate is put back into the network and the solver fails, leaving a
+non-finite residual. The pre-registered explanation was that the discovered
+denominator has a root inside or near the range the resimulation visits, and
+that a check on the candidate alone would predict it. The measurement
+covered the stored rows and new ones.
+
+The reference protocol produced nothing to audit: 15 runs, five seeds at
+noise 0, 0.02 and 0.05, none diverged, with denominator minima between 0.949
+and 1.013 and held-out residuals from 0.002 to 0.054. The stored rows name
+where the divergences are instead — the four-state fixture on the **constant**
+sample design, which holds `S` at 0.4 on every sample and stopped being the
+default in 0.12. Retraining those cells reproduces them exactly: the same
+four seed-library-variant cells, the same extra terms, the same non-finite
+residuals.
+
+| design | noise | runs | diverged | no candidate |
+|---|---|---|---|---|
+| constant | 0.0 | 60 | 0 | 0 |
+| constant | 0.02 | 60 | 0 | 0 |
+| constant | 0.05 | 60 | 4 | 2 |
+| varying (the default since 0.12) | 0.05 | 60 | 0 | 2 |
+
+Every candidate that diverged has a denominator identically 1 — the sparse
+fit kept no denominator term at all — so its minimum is 1.0 on the samples,
+on their bounding box and on the box widened past the observed range. No
+threshold on the denominator can flag them.
+
+| check on the candidate alone | catches | flags runs that were fine |
+|---|---|---|
+| denominator below 0.1 on the sample box | 0 of 4 | 47 of 232 |
+| denominator below 0.5 on the sample box | 0 of 4 | 48 of 232 |
+| denominator negative on the sample box | 0 of 4 | 46 of 232 |
+| denominator below 0.1 on the widened box | 0 of 4 | 50 of 232 |
+| denominator sign change on the sample box | 0 of 4 | 46 of 232 |
+| denominator sign change on the widened box | 0 of 4 | 49 of 232 |
+| rate goes negative on the sample box | 1 of 4 | 82 of 232 |
+| rate goes negative on the widened box | 4 of 4 | 75 of 232 |
+
+The pre-registered confirmation asked for at least 80 per cent of the
+historical divergences with no false alarms. Every denominator-based check
+catches none of them and warns about forty-six to fifty of the two hundred and thirty-two runs
+that resimulated without trouble, so the hypothesis is **refuted**. The same grids do show
+what the diverging candidates have in common: the discovered rate turns
+negative outside the range it was fitted on, which makes the destruction
+term a source and the state grow without bound. That catches all four, but it
+also flags seventy-five runs that were fine — one of them a candidate whose rate
+reaches -2.4e5 on the widened grid and still resimulates, because the
+trajectory never goes there. It is therefore not a check that could be added
+to the existing denominator-safety guard, and none is added.
+
+**The warm-up length.** The warm-up is a short Adam pass on the first
+experiment whose optimizer state the joint fit then reuses. It was run at
+zero, at the package's length and at twice it, with all observations and with
+every second observation of the regulator hidden — the sparsely observed
+species of the p53 case study.
+
+| observations | warm-up | runs | final loss median | learned-rate error median | error range | distinct supports | diverged |
+|---|---|---|---|---|---|---|---|
+| all | none | 5 | 4.13e-6 | 0.050 | 0.041 to 0.091 | 2 | 0 |
+| all | the package's length | 5 | 3.86e-6 | 0.046 | 0.038 to 0.049 | 1 | 0 |
+| all | twice it | 5 | 2.49e-6 | 0.043 | 0.034 to 0.059 | 1 | 0 |
+| every second regulator value hidden | none | 5 | 4.45e-6 | 0.040 | 0.039 to 0.046 | 2 | 0 |
+| every second regulator value hidden | the package's length | 5 | 3.85e-6 | 0.039 | 0.036 to 0.043 | 1 | 0 |
+| every second regulator value hidden | twice it | 5 | 2.39e-6 | 0.040 | 0.037 to 0.077 | 1 | 0 |
+
+The pre-registered confirmation asked that the package's length be within
+noise of the better of the other two on both fixtures, and it is: on fully
+observed data the best median is 0.043 at twice the length against 0.046 at
+the package's, and with observations hidden the package's length is itself
+the best at 0.039. Both gaps are far smaller than the 0.022-to-0.084 spread
+that ten initialisations of the same data produce, so the warm-up length
+matters less than which random initialisation a run happens to draw.
+**Confirmed.** Dropping the warm-up entirely is the only setting that changes
+anything visible: the rate error rises to a median 0.050 on fully observed
+data with one run at 0.091, and one seed's discovery drops the linear
+numerator term, which happens to score a better F1 of 0.667. Thirty runs, none
+diverged.
+
+**A reliability section in the printed report** was left out. It was
+conditional on these three measurements producing a number a user should see
+before trusting a run, and they do not: the initialisation spread is a
+property of ten runs rather than of the one a user has, the warm-up length is
+a configuration value and not a per-run measurement, and the one per-run
+quantity that was a candidate — the discovered denominator's minimum, which
+the report already computes — is shown above not to predict the failure it
+would be reported for.
+
+Environment: Julia 1.10.12, OrdinaryDiffEq 7.8.1, SciMLSensitivity 7.119.3,
+Lux 1.31.4, Optimization 5.9.0, Zygote 0.7.13, SciMLBase 3.51.0,
+HybridKinetics 0.18.0, four cores, 2026-09-13.
 
 ## Report fields
 

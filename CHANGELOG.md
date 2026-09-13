@@ -12,6 +12,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Nothing yet.
 
+## [0.18.0] - 2026-09-13
+
+A measurement release. Nothing in the package's behaviour changes: no default
+moves, no threshold moves, no public function changes, and the 0.15
+fingerprint suite reproduces exactly. What is new is what is known about
+three weaknesses of the existing workflow, each measured against a criterion
+written down before the run, and the instruments that make those
+measurements repeatable. The version is a minor bump rather than a patch
+because three modules and a benchmark entry point are added to what ships,
+not because behaviour changed.
+
+### Added
+
+- `src/ExtraTermsStudy.jl` and `benchmark/extra_terms_study.jl`: four
+  explanations for the extra terms that survive the reference discovery,
+  each measured on one training's samples so that only the discovery step
+  varies. 2310 rows in `benchmark/results/extra_terms_study.csv`.
+- `src/AdjacentBiasStudy.jl`: the adjacent-node bias under the joint fit, a
+  fit started at the true rates, sequential training in both orderings and
+  inverse-variance loss weighting, plus a scan of the held-out residual over
+  the two learned rates' scale factors.
+- `src/ReliabilityStudy.jl`: the spread of one run over ten random
+  initialisations of the neural term; the warm-up length at zero, at the
+  package's value and at twice it, with and without hidden observations; and
+  an audit of every library-comparison run whose hybrid model will not
+  resimulate, recording what the discovered candidate alone says about it.
+- Three sections on the benchmarks page with the results and the criteria
+  they are read against, and the matching paragraphs on the limitations page
+  and in the README.
+
+### Changed
+
+- Nothing in the shipped path. The support F1 stays at 0.571, the sparsity
+  threshold at 1e-3, the cross-term warning at 0.46 and the denominator floor
+  at 1e-8, because every change that would have moved them failed the
+  criterion written for it.
+
+### Fixed
+
+- Three defects in the new study code, each now pinned by a test: a frozen
+  rate read through `sample_unknown_destruction` returns no gradient and the
+  sequential fit silently trained nothing; a held-out residual averaged over
+  hidden observations is `NaN` and made every masked run read as a
+  divergence; and `Statistics.median` takes no `init` keyword, which stopped
+  the adjacency summary as soon as a setting recorded no cross-term value.
+
 ## [0.17.2] - 2026-09-13
 
 ### Fixed
@@ -684,7 +730,8 @@ thresholds, seeds, protocol settings, library construction) is unchanged.
 - `predict_ude` routes through `SciMLBase.ODEProblem` for both AD policies.
 - `RunMetadata` defaults to `BioDynaX.PACKAGE_VERSION`.
 
-[Unreleased]: https://github.com/utkuyilmaz1903/HybridKinetics.jl/compare/v0.17.2...HEAD
+[Unreleased]: https://github.com/utkuyilmaz1903/HybridKinetics.jl/compare/v0.18.0...HEAD
+[0.18.0]: https://github.com/utkuyilmaz1903/HybridKinetics.jl/compare/v0.17.2...v0.18.0
 [0.17.2]: https://github.com/utkuyilmaz1903/HybridKinetics.jl/compare/v0.17.1...v0.17.2
 [0.17.1]: https://github.com/utkuyilmaz1903/HybridKinetics.jl/compare/v0.17.0...v0.17.1
 [0.17.0]: https://github.com/utkuyilmaz1903/HybridKinetics.jl/compare/v0.16.0...v0.17.0

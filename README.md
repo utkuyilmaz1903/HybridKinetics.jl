@@ -160,16 +160,20 @@ Synthetic data for several initial conditions come from
 ## Scope and limitations
 
 - **Unknown destruction terms only, one per node.** Any number of
-  destruction terms on distinct nodes may be unknown. Two unknown terms on the
-  same node are refused with an error (two rates multiplying the same state
-  are one rate to the data), and an unknown production term is out of scope
-  and refused. Two terms on nodes that do not regulate each other's term separate
-cleanly; two terms on adjacent nodes leave the downstream term's learned rate
-15–30% low, which the cross-term diagnostic flags above 0.46; three terms
-degrade further and lose a support in some seeds (0.16 study, benchmarks
-page). The reference recovery protocol behind the
-  benchmarks (`run_recovery_suite`) is a single-term instrument and raises an
-  error for zero or several unknown terms.
+  destruction terms on distinct nodes may be unknown. Two unknown terms on
+  the same node are refused with an error (two rates multiplying the same
+  state are one rate to the data), and an unknown production term is out of
+  scope and refused. Two terms on nodes that do not regulate each other's
+  term separate cleanly; two terms on adjacent nodes leave one term's learned
+  rate 15–30% low, which the cross-term diagnostic flags above 0.46; three
+  terms degrade further and lose a support in some seeds (0.16 study,
+  benchmarks page). That 15–30% is a property of the search rather than of
+  the data: fitted from the true rates the same data leave both terms within
+  1% of the truth on the median and 5% at worst, and none of the three
+  corrections measured in 0.18 removes it.
+  The reference recovery protocol behind the benchmarks
+  (`run_recovery_suite`) is a single-term instrument and raises an error for
+  zero or several unknown terms.
 - **The identifiability diagnostic is local and practical.** It flags an edge
   as unidentifiable when the Fisher condition number exceeds `1e6` or when the
   production-rate and destruction-scale trajectory Jacobians have a cosine of
@@ -184,10 +188,15 @@ page). The reference recovery protocol behind the
   against each other.
 - **The discovered form is a rational function, not a canonical Hill law.**
   The reference protocol recovers the true monomials of the Hill term (the
-  acceptance criterion is recall of at least 0.99), but nuisance terms remain.
-  The combined support F1 threshold in the benchmarks is 0.50; the package does
-  not turn the neural term into a canonical Hill expression with named
-  parameters.
+  acceptance criterion is recall of at least 0.99), but extra terms remain, a
+  constant and a linear term, which hold the combined support F1 at about
+  0.57. That number measures how far the learned rate sits from the true law
+  in the library's basis, not a mislabelled truth and not an unreachable
+  ceiling: the extra terms carry coefficients of the same order as the true
+  ones and describe the network's error rather than the mechanism (0.18
+  study, benchmarks page). The F1 threshold in the benchmarks is 0.50; the
+  package does not turn the neural term into a canonical Hill expression with
+  named parameters.
 - **Validation on synthetic data; two measured datasets.** The benchmarks and
   the tests use data generated from the compiled ground-truth mechanism, and
   the CSV in `examples/data/` is synthetic. The primary real-data example is
