@@ -365,7 +365,8 @@ function _reliability_visited_minimum(model, p, term, candidate, rate_fn, rows,
         times = experiment.times
         solution = try
             solve(SciMLBase.ODEProblem(rhs, experiment.u0,
-                    (first(times), last(times))), Tsit5(); sensealg = nothing)
+                    (first(times), last(times))),
+                Tsit5(); sensealg = nothing)
         catch
             nothing
         end
@@ -373,7 +374,8 @@ function _reliability_visited_minimum(model, p, term, candidate, rate_fn, rows,
         states = Array(solution)
         size(states, 2) == 0 && continue
         visited = Matrix(states[rows, :])
-        all(isfinite, visited) || (visited = visited[:, vec(all(isfinite, visited; dims = 1))])
+        all(isfinite, visited) ||
+            (visited = visited[:, vec(all(isfinite, visited; dims = 1))])
         size(visited, 2) == 0 && continue
         _, values = _evaluate_candidate(spec, candidate.numerator_coefficients,
             candidate.denominator_coefficients, visited)
@@ -432,8 +434,9 @@ function reliability_divergence_audit(; seeds = RELIABILITY_SEEDS,
                     _library_study_residual(trained.model, trained.params,
                         trained.term, rate_fn, discovery_rows, experiment)
                 for experiment in trained.holdout_set.experiments)
-                candidate isa ImplicitCandidate && (visited_min =
-                    _reliability_visited_minimum(trained.model, trained.params,
+                candidate isa ImplicitCandidate &&
+                    (visited_min = _reliability_visited_minimum(
+                        trained.model, trained.params,
                         trained.term, candidate, rate_fn, discovery_rows,
                         vcat(collect(trained.train_set.experiments),
                             collect(trained.holdout_set.experiments))))
@@ -529,7 +532,7 @@ function reliability_audit_summary(rows)
             row -> isfinite(row.denominator_min_box) && row.denominator_min_box < 0.5),
         ("denominator below 0.1 on the widened box",
             row -> isfinite(row.denominator_min_extended) &&
-                   row.denominator_min_extended < 0.1),
+                row.denominator_min_extended < 0.1),
         ("sign change on the sample box", row -> row.sign_change_box),
         ("sign change on the widened box", row -> row.sign_change_extended),
         ("negative rate on the sample box", row -> row.negative_rate_box),
@@ -537,12 +540,14 @@ function reliability_audit_summary(rows)
         ("no candidate at all", row -> !row.success))
         caught = count(flag, diverged)
         false_alarms = count(flag, fine)
-        push!(checks, (; name, caught, of = length(diverged), false_alarms,
-            of_fine = length(fine)))
+        push!(checks,
+            (; name, caught, of = length(diverged), false_alarms,
+                of_fine = length(fine)))
     end
-    pushfirst!(checks, (; name = "runs with no candidate (counted in neither)",
-        caught = count(row -> !row.success, rows), of = length(rows),
-        false_alarms = 0, of_fine = length(fine)))
+    pushfirst!(checks,
+        (; name = "runs with no candidate (counted in neither)",
+            caught = count(row -> !row.success, rows), of = length(rows),
+            false_alarms = 0, of_fine = length(fine)))
     return checks
 end
 

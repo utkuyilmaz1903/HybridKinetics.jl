@@ -121,7 +121,8 @@ end
 end
 
 @testset "a run with no candidate is neither a divergence nor a run that was fine" begin
-    rows = [(; success = true, diverged = true, denominator_min_box = 0.05,
+    rows = [
+        (; success = true, diverged = true, denominator_min_box = 0.05,
             denominator_min_extended = -0.2, sign_change_box = false,
             sign_change_extended = true, negative_rate_box = false),
         (; success = true, diverged = false, denominator_min_box = 0.9,
@@ -192,7 +193,8 @@ end
         first_model.st) / first_term.scale
     second_net = HybridKinetics.adjacent_frozen_network(fx, :A, :B, rate)
     second_model, second_p0 = build_ude_model(MersenneTwister(103), second_net)
-    custom = only(term for term in second_model.compiled.destruction_terms
+    custom = only(term
+    for term in second_model.compiled.destruction_terms
     if term isa HybridKinetics.CustomDestructionTerm)
     @test custom.scale == first_term.scale
     params = HybridKinetics.adjacent_initial_parameters(second_model, second_p0)

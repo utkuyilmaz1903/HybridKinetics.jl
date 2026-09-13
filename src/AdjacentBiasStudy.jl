@@ -350,7 +350,8 @@ function adjacent_sequential_run(; seed, noise_σ, fixture, data, verbose, start
     second_model, second_p0 = build_ude_model(MersenneTwister(seed), second_net)
     length(neural_destruction_terms(second_model)) == 1 || throw(ErrorException(
         "the frozen network must leave exactly one neural term"))
-    frozen_term = only(term for term in second_model.compiled.destruction_terms
+    frozen_term = only(term
+    for term in second_model.compiled.destruction_terms
     if term isa CustomDestructionTerm)
     frozen_term.scale == frozen_scale || throw(ErrorException(
         "the frozen term's scale ($(frozen_term.scale)) differs from the neural " *
