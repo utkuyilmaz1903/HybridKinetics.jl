@@ -1019,10 +1019,12 @@ HybridKinetics 0.18.0, four cores, 2026-09-13.
 
 ### Closing the optimisation gap
 
-0.18 measured a solution the training path does not reach. 0.19 measured how
-far away it is, why it is not walkable, and how much of the distance each of
-four approaches recovers. Reference two-state protocol, five seeds, noise 0,
-every number from a run recorded with the environment below.
+0.18 measured a solution the training path does not reach at its default
+budget. 0.19 measured how far away it is, how much of the distance each of
+several approaches recovers, and -- the result that reframes the rest -- that
+closing the distance in training loss does not close it in discovered support.
+Reference two-state protocol, five seeds, noise 0, every number from a run
+recorded with the environment below.
 
 **The floor and the ceiling.** The floor is the package's own path. The
 ceiling is the same protocol with the network pre-trained to the true Hill
@@ -1083,6 +1085,36 @@ Starting there closes a median 88 per cent of the loss gap and improves the
 support in two seeds, each time by dropping the linear denominator term. In two
 seeds it reaches a lower loss than the true-rate start, so the ceiling is a
 reference point rather than a bound.
+
+**How much of it is the iteration budget.** The reference protocol runs 100
+Adam iterations and 50 of BFGS. The same fits at two, four and eight times that
+budget, three seeds, noise 0, as a share of the loss gap between the default
+fit and the true-rate fit:
+
+| seed | 2x | 4x | 8x | support F1 at 2x / 4x / 8x |
+|---|---|---|---|---|
+| 103 | 104% | 108% | 108% | 0.571 / 0.571 / 0.571 |
+| 107 | 99% | 100% | 101% | 0.571 / 0.571 / 0.571 |
+| 111 | 170% | 180% | 184% | 0.571 / 0.571 / **0.667** |
+
+Over 100 per cent means the fit ends below the true-rate fit. The default
+training is therefore not at a minimum; it has run out of iterations, and the
+loss gap above is a budget artefact.
+
+The support barely follows. It stays at 0.571 in eight of the nine runs, with
+the same five terms; seed 111 at eight times the budget drops one term and
+reaches 0.667. And the extra budget is not merely failing to get close enough:
+seed 107 at 8x reaches a learned-rate error of 0.0044 and seed 111 at 4x
+reaches 0.0037, both more accurate than *every* true-rate fit, whose best is
+0.0046 — and those true-rate fits all score 1.000 while these score 0.571.
+
+A fit can be more accurate in its learned rate than the true-rate fit, and two
+orders of magnitude lower in training loss, and still recover the wrong
+support. The loss gap and the discovery gap are different gaps.
+
+8x the budget costs 3.8x the wall time on seed 103 (1145 s against 304 s), 4x
+costs 2.7x; fixed per-run overhead is why it is sublinear. No default changed,
+so the shipped path's wall time is unchanged.
 
 **What does not work, and why it was not built.** A curvature penalty on the
 learned rate was the one route to a better support that does not go through the
