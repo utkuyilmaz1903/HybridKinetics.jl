@@ -12,13 +12,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Nothing yet.
 
-## [0.19.0] - 2026-09-13
+## [0.19.0] - 2026-09-14
 
 A measurement release aimed at one target: 0.18 showed that a substantially
-better solution exists and training does not reach it. 0.19 measured how far
-away it is, why, and what closes the distance. One option is added, off by
-default; no default, threshold or public function changes, and the 0.15
-fingerprint suite reproduces exactly.
+better solution exists and the default training does not reach it. 0.19
+measured how far away it is and what closes the distance, and found that the
+distance training descends is not the one that matters. Given two, four and
+eight times the iteration budget the fit closes the whole loss gap and
+overshoots it, reaching a learned rate more accurate than the true-rate fit's
+-- and recovers the same wrong support. One option is added, off by default;
+no default, threshold or public function changes, and the 0.15 fingerprint
+suite reproduces exactly.
 
 ### Added
 
@@ -42,6 +46,19 @@ fingerprint suite reproduces exactly.
 
 - Nothing in the shipped path. The support F1 stays at 0.571, every threshold
   and seed is untouched, and the discovery code was not modified at all.
+
+### Fixed
+
+- `restarts` reached only `train_experiments_with_warmup`. The option lives on
+  `TrainingConfig`, so `discover_unknown_terms` and `train_experiments`
+  accepted it and then silently fitted once. `discover_unknown_terms` now
+  wraps the warm-up and the joint fit together, which is the only correct
+  place for the loop -- a restart redraws the whole neural block, so
+  restarting the joint fit alone would discard the warm-up on every attempt
+  after the first. `train_experiments` acts on it directly. `train_ude` raises
+  instead of accepting it, because it fits one experiment and the lowest
+  single-experiment loss is not the lowest joint loss. With `restarts` at 1
+  every path is unchanged down to the last float.
 
 ### Measured, and not adopted
 

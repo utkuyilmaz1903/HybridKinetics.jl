@@ -1127,7 +1127,7 @@ act on, and none was built.
 
 Environment: Julia 1.10.12, OrdinaryDiffEq 7.8.1, SciMLSensitivity 7.119.3,
 Lux 1.31.4, Optimization 5.9.0, Zygote 0.7.13, SciMLBase 3.51.0,
-HybridKinetics 0.19.0, four cores, 2026-09-13.
+HybridKinetics 0.19.0, four cores, 2026-09-13 and 14.
 
 ## Report fields
 
