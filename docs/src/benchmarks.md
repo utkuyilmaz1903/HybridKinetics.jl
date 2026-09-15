@@ -1116,6 +1116,43 @@ support. The loss gap and the discovery gap are different gaps.
 costs 2.7x; fixed per-run overhead is why it is sublinear. No default changed,
 so the shipped path's wall time is unchanged.
 
+**Neither the training loss nor the size of the rate error decides the
+support.** Two measurements say this directly. The budget runs above reach a
+learned rate more accurate than every true-rate fit and still recover five
+terms where the true-rate fits recover two. And on seed 107 at 5 per cent
+noise, two fits of the same data whose learned-rate errors differ by a factor
+of 2.4 -- 0.0206 against 0.0491 -- recover byte-identical support, the same
+five terms, at training losses within half a per cent of each other:
+
+| seed 107, noise 0.05 | final loss | learned-rate error | support F1 |
+|---|---|---|---|
+| warm-up curriculum 0.25/0.5/1.0 | 2.407e-3 | 0.0206 | 0.571 |
+| warm-up curriculum 0.35/0.7/1.0 | 2.418e-3 | 0.0491 | 0.571 |
+
+A rate can be two and a half times more accurate and give the same answer, or
+as accurate and give a different one. What the discovery step responds to is
+not the magnitude of the error.
+
+**The warm-up curriculum, measured and not adopted.** The horizon curriculum
+is read only by the single-IC warm-up. Twenty fits -- five seeds, noise 0 and
+0.05, both schedules, discovery identical in every arm -- give ten paired
+cells. At noise 0 the support is 0.571 with the extras `1` and `R` in all ten
+runs, both schedules, although the schedules reach different losses and rate
+errors. At 5 per cent noise the support moves in two cells and in opposite
+directions: seed 127 is better under 0.25/0.5/1.0 (1.000 against 0.800) and
+seed 113 better under 0.35/0.7/1.0 (1.000 against 0.800), with three ties.
+Five ties and no wins at noise 0, one win each at noise: the schedule is not
+systematically better either way, and no default moved.
+
+**The extra terms come off in an order.** Across every cell measured here, the
+discovered support degrades through the same sequence: F1 0.571 carries both
+extras, the constant `1` and the linear `R`; F1 0.800 carries the constant
+alone; F1 1.000 carries neither. `R` is dropped before `1` in every cell where
+the support moves at all -- the noise-0.05 cells of seeds 113 and 127 under
+both schedules, and the 0.800 and 0.667 cells elsewhere in this section. The
+recall is 1.0 throughout, so nothing true is ever lost. This is recorded as
+observed; why the linear term should be the fragile one is not explained here.
+
 **What does not work, and why it was not built.** A curvature penalty on the
 learned rate was the one route to a better support that does not go through the
 optimiser. Before adding one to the training objective, the premise was
