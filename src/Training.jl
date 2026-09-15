@@ -773,12 +773,13 @@ end
 
 function train_ude(p_init, data, t_data, u0, tspan, model::UDEModel; kwargs...)
     config = get(values(kwargs), :config, nothing)
-    config !== nothing && config.restarts > 1 && throw(ArgumentError(
-        "restarts is $(config.restarts), but train_ude fits one experiment and " *
-        "has nothing to select restarts on: the lowest single-experiment loss " *
-        "is not the lowest joint loss. Set restarts on the joint fit instead, " *
-        "through discover_unknown_terms(training = ...), train_experiments or " *
-        "train_experiments_with_warmup"))
+    config !== nothing && config.restarts > 1 &&
+        throw(ArgumentError(
+            "restarts is $(config.restarts), but train_ude fits one experiment and " *
+            "has nothing to select restarts on: the lowest single-experiment loss " *
+            "is not the lowest joint loss. Set restarts on the joint fit instead, " *
+            "through discover_unknown_terms(training = ...), train_experiments or " *
+            "train_experiments_with_warmup"))
     return _train_ude_model(p_init, data, t_data, u0, tspan, model; kwargs...)
 end
 
