@@ -402,6 +402,38 @@ For a completed model as a ModelingToolkit system rather than a Julia
 closure, use `export_mtk_system(model; discovered = run)`
 ([Extensions](extensions.md)).
 
+## Fit from several starting points
+
+A fit begins from one random draw of the neural term, and which draw it is
+changes where training ends up: on the reference two-state protocol, five
+draws of the neural term on identical data end at final training losses
+spanning a factor of 3.9. `restarts` fits that many draws and keeps the one
+that reaches the lowest final training loss.
+
+```julia
+run = discover_unknown_terms(network, experiments;
+    training = TrainingConfig(adam_iterations = 100, bfgs_iterations = 50,
+        restarts = 5), seed = 103)
+run.training.metadata.config.restart_losses   # the final loss of every attempt
+```
+
+Only the neural term is drawn again; the physical guess and every other
+setting stay as given, and the draws come from the training seed, so a set of
+restarts repeats exactly. The default is 1, and the first restart is the fit
+the package would have done on its own, so the option can only improve the
+loss it selects on — at the cost of that many times the training time.
+
+`discover_unknown_terms`, `train_experiments` and
+`train_experiments_with_warmup` act on `restarts`. `train_ude` fits a single
+experiment and raises instead of accepting it, because the lowest
+single-experiment loss is not the lowest joint loss and there is nothing there
+worth selecting on.
+
+What it buys, measured on the reference protocol, is in
+[Benchmarks](benchmarks.md): a lower loss and a closer learned rate, and the
+same discovered support. Choosing the lowest-loss fit is not the same as
+choosing the one that discovers best.
+
 ## Checkpoint and resume
 
 `train_ude` writes a checkpoint every `checkpoint_every` Adam iterations when

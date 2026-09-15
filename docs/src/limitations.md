@@ -119,6 +119,36 @@ destruction term. This page collects every caveat in one place.
   separate them, a rate that turns negative outside the sampled range, also
   flags 75 of 232 runs that resimulated without trouble.
 
+## The optimisation gap
+
+- A better solution than training reaches exists, and both of the workflow's
+  headline weaknesses follow from not reaching it. On the reference two-state
+  protocol, the same data with the network pre-trained to the true rate before
+  training starts give the true support with no extra terms in 5 of 5 seeds,
+  at a learned-rate error of 0.005 against 0.047 and about a thirteenth of the
+  final training loss (0.19 study, benchmarks page). The support F1 of 0.571 is
+  therefore a property of where training stops, not of the library or of the
+  discovery step.
+- That solution is in a different basin, not further down the same one. The
+  training loss along the straight line between the two rises to 139 to 19,055
+  times the higher endpoint. It is not a matter of the rate's scale either: the
+  best single scalar on the learned rate recovers at most 12 per cent of the
+  gap.
+- What decides whether the extra terms appear is the shape of the learned
+  rate's error, not its size. A rate several times less accurate gives the true
+  support if its error has a different shape.
+- Of the approaches measured, only a better starting point helps materially. A
+  destruction rate estimated from the data alone and used to pre-train the
+  network closes a median 88 per cent of the loss gap and gives the better
+  support in 2 of 5 seeds. Choosing the lowest-loss of ten random
+  initialisations improves the rate by 17 per cent and the held-out residual by
+  41 per cent and changes the support in none. Smoothing the learned rate
+  changes nothing: it is already smooth, so a roughness penalty has nothing to
+  act on.
+- `restarts` on the training configuration fits several initialisations and
+  keeps the lowest final loss. It defaults to 1, which is the single fit the
+  package has always done.
+
 ## Extensions and integrations
 
 - The GPU extension only transfers arrays; there is no batched GPU training.

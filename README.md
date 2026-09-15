@@ -194,9 +194,12 @@ Synthetic data for several initial conditions come from
   in the library's basis, not a mislabelled truth and not an unreachable
   ceiling: the extra terms carry coefficients of the same order as the true
   ones and describe the network's error rather than the mechanism (0.18
-  study, benchmarks page). The F1 threshold in the benchmarks is 0.50; the
-  package does not turn the neural term into a canonical Hill expression with
-  named parameters.
+  study, benchmarks page). It is a property of where training stops, not of
+  the library: the same data with the network started at the true rate give
+  the true support with no extras in 5 of 5 seeds, and the two solutions sit
+  in different basins (0.19 study). The F1 threshold in the benchmarks is
+  0.50; the package does not turn the neural term into a canonical Hill
+  expression with named parameters.
 - **Validation on synthetic data; two measured datasets.** The benchmarks and
   the tests use data generated from the compiled ground-truth mechanism, and
   the CSV in `examples/data/` is synthetic. The primary real-data example is

@@ -91,7 +91,7 @@ function lock_training_config(model::UDEModel, config::TrainingConfig)
     return TrainingConfig(
         config.adam_iterations, config.adam_learning_rate, config.bfgs_iterations,
         config.gradient_clip, config.log_every, config.constraint, solver,
-        config.horizon_schedule, config.frozen_phys)
+        config.horizon_schedule, config.frozen_phys, config.restarts)
 end
 
 """
@@ -277,6 +277,67 @@ end
 # -- Joint warmup + multi-IC train --------------------------------------------
 
 """
+`restarts` fits from `restarts` different random initialisations of the neural
+term, keeping the one that reaches the lowest final loss. The physical guess
+and every other setting stay as the caller left them; only the network is drawn
+again, from `seed` so that the set of restarts is reproducible. The losses of
+every restart are carried in the returned result's metadata under
+`restart_losses`, in the order they were run.
+
+0.19 measured this against the alternative of accepting the first fit: a lower
+loss does come with a more accurate learned rate, but on the reference protocol
+it did not change the discovered support. Default is 1, which is the single fit
+the package has always done.
+"""
+function _train_with_restarts(p_init, set::ExperimentSet, model::UDEModel, locked,
+        execution, verbose, seed, warmup)
+    single = TrainingConfig(locked; restarts = 1)
+    return _best_of_restarts(p_init, model, locked.restarts, seed) do start
+        train_experiments_with_warmup(start, set, model;
+            config = single, execution = execution, verbose = verbose,
+            seed = seed, warmup = warmup)
+    end
+end
+
+"""
+    _best_of_restarts(fit, p_init, model, restarts, seed)
+
+`fit(start)` run `restarts` times and the `TrainingResult` with the lowest
+final loss returned, carrying every attempt's loss in its metadata under
+`restart_losses`. Restart one starts from `p_init` unchanged, so a single
+restart is the fit that would have happened anyway; each later one redraws the
+neural block from `seed` and keeps the physical guess.
+"""
+function _best_of_restarts(fit, p_init, model::UDEModel, restarts::Integer, seed)
+    losses = Float64[]
+    best = nothing
+    for k in 1:restarts
+        attempt = fit(k == 1 ? p_init : _reinitialise_network(p_init, model, seed + k))
+        push!(losses, Float64(attempt.final_loss))
+        if best === nothing || attempt.final_loss < best.final_loss
+            best = attempt
+        end
+    end
+    metadata = RunMetadata(; seed = seed,
+        config = (; base = best.metadata.config, restart_losses = copy(losses)))
+    return TrainingResult(best.params, best.history, best.initial_loss,
+        best.final_loss, metadata, best.diagnostics, best.converged, best.retcode)
+end
+
+"""`p_init` with the neural block drawn again from `seed`, physical guess kept."""
+function _reinitialise_network(p_init, model::UDEModel, seed::Integer)
+    parameters, _ = Lux.setup(MersenneTwister(seed), model.nn)
+    fresh = copy(p_init)
+    data = ComponentArrays.getdata(
+        ComponentArrays.ComponentVector(_float64_param_tree(parameters)))
+    length(data) == length(ComponentArrays.getdata(fresh.nn)) || throw(ErrorException(
+        "a fresh draw of the network has $(length(data)) parameters against " *
+        "$(length(ComponentArrays.getdata(fresh.nn))) in the vector being restarted"))
+    ComponentArrays.getdata(fresh.nn) .= data
+    return fresh
+end
+
+"""
     train_experiments_with_warmup(p_init, set, model; config, ...)
 
 Warmup on IC 1, then `train_experiments` with the same compiled model,
@@ -290,6 +351,8 @@ function train_experiments_with_warmup(p_init, set::ExperimentSet, model::UDEMod
         seed::Integer = 0,
         warmup::Bool = true)
     locked = lock_training_config(model, config)
+    locked.restarts > 1 && return _train_with_restarts(
+        p_init, set, model, locked, execution, verbose, seed, warmup)
     session = training_solve_session(model, set, p_init; solver = locked.solver)
     if !warmup || length(set) == 1
         return train_experiments(

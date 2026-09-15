@@ -450,17 +450,27 @@ function discover_unknown_terms(network::BiologicalNetwork, experiments::Experim
     ude_init = pack_parameters(guess, p0.nn)
     first_exp = first(train_set.experiments)
     tspan = (first(first_exp.times), last(first_exp.times))
-    start = ude_init
-    if warmup
-        warm = train_ude(
-            ude_init, first_exp.observations, first_exp.times, first_exp.u0, tspan, model;
-            config = TrainingConfig(training; bfgs_iterations = 0,
-                horizon_schedule = HorizonCurriculum(fractions = [0.35, 0.7, 1.0])),
-            verbose = verbose, mask = first_exp.mask)
-        start = warm.params
+    # The default path must stay bit-identical, so a single restart reuses the
+    # caller's own configuration object rather than a copy of it.
+    single = training.restarts == 1 ? training :
+             TrainingConfig(training; restarts = 1)
+    fit_once = function (initial)
+        start = initial
+        if warmup
+            warm = train_ude(
+                initial, first_exp.observations, first_exp.times, first_exp.u0, tspan,
+                model;
+                config = TrainingConfig(single; bfgs_iterations = 0,
+                    horizon_schedule = HorizonCurriculum(fractions = [0.35, 0.7, 1.0])),
+                verbose = verbose, mask = first_exp.mask)
+            start = warm.params
+        end
+        return train_experiments(start, train_set, model; config = single,
+            verbose = verbose)
     end
-    trained = train_experiments(start, train_set, model; config = training,
-        verbose = verbose)
+    trained = training.restarts > 1 ?
+              _best_of_restarts(fit_once, ude_init, model, training.restarts,
+        something(seed, 0)) : fit_once(ude_init)
     isfinite(trained.final_loss) ||
         @warn "the joint training loss is not finite; the discovered rates will not be reliable" final_loss=trained.final_loss
 

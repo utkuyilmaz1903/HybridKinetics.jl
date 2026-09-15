@@ -1017,6 +1017,155 @@ Environment: Julia 1.10.12, OrdinaryDiffEq 7.8.1, SciMLSensitivity 7.119.3,
 Lux 1.31.4, Optimization 5.9.0, Zygote 0.7.13, SciMLBase 3.51.0,
 HybridKinetics 0.18.0, four cores, 2026-09-13.
 
+### Closing the optimisation gap
+
+0.18 measured a solution the training path does not reach at its default
+budget. 0.19 measured how far away it is, how much of the distance each of
+several approaches recovers, and -- the result that reframes the rest -- that
+closing the distance in training loss does not close it in discovered support.
+Reference two-state protocol, five seeds, noise 0, every number from a run
+recorded with the environment below.
+
+**The floor and the ceiling.** The floor is the package's own path. The
+ceiling is the same protocol with the network pre-trained to the true Hill
+rate before training starts — not something a user can do, and the point of it
+is to say what the rest of the workflow produces when training begins where it
+is trying to end.
+
+| start | final loss median | learned-rate error | support F1 | held-out residual |
+|---|---|---|---|---|
+| the package's own | 3.86e-6 | 0.0465 | 0.571 in 5 of 5 | 0.00431 |
+| pre-trained to the true rate | 3.20e-7 | 0.0051 | **1.000 in 5 of 5** | 0.00096 |
+
+All five ceiling runs discover exactly the true support, `R^2` over `R^2`, with
+no extra terms. The extras are therefore not a limit of the library or of the
+discovery step: they are what this training's solution looks like. The loss gap
+is x13.4 at the median, from x2.2 to x134.5.
+
+**Why the better solution is not reachable by descending.** Evaluating the
+training loss along the straight line between the two solutions, at twenty
+points, gives a peak in between of 139 to 19,055 times the higher endpoint, in
+5 of 5 seeds. The better solution is in a different basin. A barrier on the
+straight line does not prove no descending path exists, only that the two are
+not joined by the simplest one.
+
+Nor is the gap a matter of scale. The best single scalar on the learned rate is
+0.969 to 0.995 and recovers 1 to 12 per cent of the rate-error gap. Taking
+either solution's network with the other's mechanistic parameters gives a loss
+10 to 300 times worse than both, so the network and the mechanistic parameters
+are jointly tuned — the production-rate against destruction-scale trade-off,
+visible as two separate consistent balances.
+
+**What decides the support is the shape of the error, not its size.** Mixing a
+trained run's own error into the true rate and running the reference discovery
+unchanged at each mixture, F1 is 1.0 only at exactly zero error and 0.571 by
+0.2 per cent. Yet the ceiling runs sit at 0.46 to 0.90 per cent error and score
+1.0. A rate can be several times less accurate and still give the true support,
+if its error has a different shape.
+
+**What each approach recovers.**
+
+| approach | share of the loss gap closed | learned-rate error | support F1 above 0.571 |
+|---|---|---|---|
+| lowest of ten random initialisations | (loss better in 4 of 5) | 0.0429 to 0.0358 | 0 of 5 |
+| network pre-trained to the estimate's scale only | none | 0.0450 | 0 of 5 |
+| network pre-trained to a rate estimated from the data | **88% median** | 0.0465 to 0.0282 | 2 of 5 |
+| smoothing the learned rate after training | not applicable | worse at every window | 0 of 5 |
+
+The rate estimated from the data is read straight off the fixture: with
+`dS/dt = k_prod R - D(R) S`, every observed point gives `D(R)` once `dS/dt` is
+taken by central differences, and the points are binned by regulator value.
+`k_prod` is not known to the fit either, so the estimate uses the same flat
+guess the package's own path starts from and is good only up to a scale — 10 to
+21 per cent from the true law, and 4 to 20 per cent once the best single scalar
+is removed. It is deliberately not a Hill pre-fit, which would hand discovery
+the form it is meant to find.
+
+Starting there closes a median 88 per cent of the loss gap and improves the
+support in two seeds, each time by dropping the linear denominator term. In two
+seeds it reaches a lower loss than the true-rate start, so the ceiling is a
+reference point rather than a bound.
+
+**How much of it is the iteration budget.** The reference protocol runs 100
+Adam iterations and 50 of BFGS. The same fits at two, four and eight times that
+budget, three seeds, noise 0, as a share of the loss gap between the default
+fit and the true-rate fit:
+
+| seed | 2x | 4x | 8x | support F1 at 2x / 4x / 8x |
+|---|---|---|---|---|
+| 103 | 104% | 108% | 108% | 0.571 / 0.571 / 0.571 |
+| 107 | 99% | 100% | 101% | 0.571 / 0.571 / 0.571 |
+| 111 | 170% | 180% | 184% | 0.571 / 0.571 / **0.667** |
+
+Over 100 per cent means the fit ends below the true-rate fit. The default
+training is therefore not at a minimum; it has run out of iterations, and the
+loss gap above is a budget artefact.
+
+The support barely follows. It stays at 0.571 in eight of the nine runs, with
+the same five terms; seed 111 at eight times the budget drops one term and
+reaches 0.667. And the extra budget is not merely failing to get close enough:
+seed 107 at 8x reaches a learned-rate error of 0.0044 and seed 111 at 4x
+reaches 0.0037, both more accurate than *every* true-rate fit, whose best is
+0.0046 — and those true-rate fits all score 1.000 while these score 0.571.
+
+A fit can be more accurate in its learned rate than the true-rate fit, and two
+orders of magnitude lower in training loss, and still recover the wrong
+support. The loss gap and the discovery gap are different gaps.
+
+8x the budget costs 3.8x the wall time on seed 103 (1145 s against 304 s), 4x
+costs 2.7x; fixed per-run overhead is why it is sublinear. No default changed,
+so the shipped path's wall time is unchanged.
+
+**Neither the training loss nor the size of the rate error decides the
+support.** Two measurements say this directly. The budget runs above reach a
+learned rate more accurate than every true-rate fit and still recover five
+terms where the true-rate fits recover two. And on seed 107 at 5 per cent
+noise, two fits of the same data whose learned-rate errors differ by a factor
+of 2.4 -- 0.0206 against 0.0491 -- recover byte-identical support, the same
+five terms, at training losses within half a per cent of each other:
+
+| seed 107, noise 0.05 | final loss | learned-rate error | support F1 |
+|---|---|---|---|
+| warm-up curriculum 0.25/0.5/1.0 | 2.407e-3 | 0.0206 | 0.571 |
+| warm-up curriculum 0.35/0.7/1.0 | 2.418e-3 | 0.0491 | 0.571 |
+
+A rate can be two and a half times more accurate and give the same answer, or
+as accurate and give a different one. What the discovery step responds to is
+not the magnitude of the error.
+
+**The warm-up curriculum, measured and not adopted.** The horizon curriculum
+is read only by the single-IC warm-up. Twenty fits -- five seeds, noise 0 and
+0.05, both schedules, discovery identical in every arm -- give ten paired
+cells. At noise 0 the support is 0.571 with the extras `1` and `R` in all ten
+runs, both schedules, although the schedules reach different losses and rate
+errors. At 5 per cent noise the support moves in two cells and in opposite
+directions: seed 127 is better under 0.25/0.5/1.0 (1.000 against 0.800) and
+seed 113 better under 0.35/0.7/1.0 (1.000 against 0.800), with three ties.
+Five ties and no wins at noise 0, one win each at noise: the schedule is not
+systematically better either way, and no default moved.
+
+**The extra terms come off in an order.** Across every cell measured here, the
+discovered support degrades through the same sequence: F1 0.571 carries both
+extras, the constant `1` and the linear `R`; F1 0.800 carries the constant
+alone; F1 1.000 carries neither. `R` is dropped before `1` in every cell where
+the support moves at all -- the noise-0.05 cells of seeds 113 and 127 under
+both schedules, and the 0.800 and 0.667 cells elsewhere in this section. The
+recall is 1.0 throughout, so nothing true is ever lost. This is recorded as
+observed; why the linear term should be the fragile one is not explained here.
+
+**What does not work, and why it was not built.** A curvature penalty on the
+learned rate was the one route to a better support that does not go through the
+optimiser. Before adding one to the training objective, the premise was
+measured: smoothing a rate a training already produced, over moving-average
+windows of 1 to 25 samples, leaves the discovered support at 0.571 in all
+thirty runs and makes the rate error worse at every window. The learned rate is
+already smoother than the smoother, so there is no roughness for a penalty to
+act on, and none was built.
+
+Environment: Julia 1.10.12, OrdinaryDiffEq 7.8.1, SciMLSensitivity 7.119.3,
+Lux 1.31.4, Optimization 5.9.0, Zygote 0.7.13, SciMLBase 3.51.0,
+HybridKinetics 0.19.0, four cores, 2026-09-13 and 14.
+
 ## Report fields
 
 | Field | Meaning |

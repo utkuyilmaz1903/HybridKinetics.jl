@@ -1,6 +1,6 @@
 name = "HybridKinetics"
 uuid = "b10d7a4f-3e2d-4b1d-9d2e-9c7e8c5f1a6b"
-version = "0.18.0"
+version = "0.19.0"
 authors = ["Utku Yılmaz"]
 description = "Hybrid kinetic models for small biochemical networks: learn the unknown rate laws from time-series data, then recover them symbolically"
 
