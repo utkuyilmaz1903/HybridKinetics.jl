@@ -4,7 +4,7 @@ Hybrid kinetic models for small biochemical networks: learn the unknown rate law
 
 [![CI](https://github.com/utkuyilmaz1903/HybridKinetics.jl/actions/workflows/ci.yml/badge.svg)](https://github.com/utkuyilmaz1903/HybridKinetics.jl/actions/workflows/ci.yml) [![Docs](https://img.shields.io/badge/docs-dev-blue.svg)](https://utkuyilmaz1903.github.io/HybridKinetics.jl/stable/) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) [![Julia](https://img.shields.io/badge/julia-%E2%89%A5%201.10-9558B2.svg)](https://julialang.org) [![ColPrac: Contributor's Guide on Collaborative Practices for Community Packages](https://img.shields.io/badge/ColPrac-Contributor%27s%20Guide-blueviolet)](https://github.com/SciML/ColPrac) [![SciML Code Style](https://img.shields.io/static/v1?label=code%20style&message=SciML&color=9558b2&labelColor=389826)](https://github.com/SciML/SciMLStyle)
 
-Version 0.17. The public API may still change before 1.0; see [CHANGELOG.md](CHANGELOG.md).
+Version 0.19. The public API may still change before 1.0; see [CHANGELOG.md](CHANGELOG.md).
 
 ## What HybridKinetics does
 
